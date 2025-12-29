@@ -112,7 +112,8 @@ static void audio_frame_finished(AESNDPB *pb, u32 state)
 static bool OGCAUDIO_OpenDevice(SDL_AudioDevice *device)
 {
     struct SDL_PrivateAudioData *hidden =
-        SDL_memalign(32, sizeof(struct SDL_PrivateAudioData));
+        memalign(32, sizeof(struct SDL_PrivateAudioData)); // This should NOT be SDL_memalign()
+                                                           // (SDL_memalign doesn't even exist anyway why does it even warn this???)
     if (!hidden) {
         return false;
     }

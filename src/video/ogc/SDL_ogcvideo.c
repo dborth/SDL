@@ -295,7 +295,7 @@ bool OGC_VideoInit(SDL_VideoDevice *_this)
     vmode = VIDEO_GetPreferredMode(NULL);
 
     videodata->gp_fifo = memalign(32, DEFAULT_FIFO_SIZE);
-    memset(videodata->gp_fifo, 0, DEFAULT_FIFO_SIZE); // This should NOT be memset()
+    memset(videodata->gp_fifo, 0, DEFAULT_FIFO_SIZE); // This should NOT be SDL_memset()
     GX_Init(videodata->gp_fifo, DEFAULT_FIFO_SIZE);
 
     setup_video_mode(_this, vmode);
