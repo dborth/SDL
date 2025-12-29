@@ -58,7 +58,7 @@ static void free_window_data(SDL_Window *window)
             SDL_free(windowdata->pixels);
         }
         if (windowdata->texels) {
-            free(windowdata->texels);
+            free(windowdata->texels); // This should NOT be SDL_free()
         }
         SDL_free(windowdata);
         window->internal = NULL;

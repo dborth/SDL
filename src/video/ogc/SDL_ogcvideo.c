@@ -147,7 +147,7 @@ static void add_supported_modes(SDL_VideoDisplay *display, u32 tv_format)
      * a height of approximately 240p) and we use it as template to build the
      * "mode320": we just set the fbWidth field to 320: the VI interface will
      * take care of the horizontal scale for us. */
-    memcpy(&s_mode320, gx_modes[0], sizeof(s_mode320));
+    memcpy(&s_mode320, gx_modes[0], sizeof(s_mode320)); // This should NOT be SDL_memcpy()
     s_mode320.fbWidth = 320;
     init_display_mode(&mode, &s_mode320);
     SDL_AddFullscreenDisplayMode(display, &mode);
@@ -197,9 +197,9 @@ static bool OGC_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *display
     GXRModeObj *vmode = mode->internal->vmode;
 
     if (videodata->xfb[0])
-        free(MEM_K1_TO_K0(videodata->xfb[0]));
+        free(MEM_K1_TO_K0(videodata->xfb[0])); // This should NOT be SDL_free()
     if (videodata->xfb[1])
-        free(MEM_K1_TO_K0(videodata->xfb[1]));
+        free(MEM_K1_TO_K0(videodata->xfb[1])); // This should NOT be SDL_free()
 
     setup_video_mode(_this, vmode);
     return true;
@@ -295,7 +295,7 @@ bool OGC_VideoInit(SDL_VideoDevice *_this)
     vmode = VIDEO_GetPreferredMode(NULL);
 
     videodata->gp_fifo = memalign(32, DEFAULT_FIFO_SIZE);
-    memset(videodata->gp_fifo, 0, DEFAULT_FIFO_SIZE);
+    memset(videodata->gp_fifo, 0, DEFAULT_FIFO_SIZE); // This should NOT be memset()
     GX_Init(videodata->gp_fifo, DEFAULT_FIFO_SIZE);
 
     setup_video_mode(_this, vmode);
@@ -337,9 +337,9 @@ void OGC_VideoQuit(SDL_VideoDevice *_this)
 
     SDL_free(videodata->gp_fifo);
     if (videodata->xfb[0])
-        free(MEM_K1_TO_K0(videodata->xfb[0]));
+        free(MEM_K1_TO_K0(videodata->xfb[0])); // This should NOT be SDL_free()
     if (videodata->xfb[1])
-        free(MEM_K1_TO_K0(videodata->xfb[1]));
+        free(MEM_K1_TO_K0(videodata->xfb[1])); // This should NOT be SDL_free()
 
     /* During shutdown, SDL_ResetDisplayModes() will be called and will invoke
      * SDL_free() on driverdata. Nullify the pointers in order to avoid a

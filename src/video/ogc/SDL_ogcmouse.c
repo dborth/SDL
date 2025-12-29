@@ -199,7 +199,7 @@ static void OGC_FreeCursor(SDL_Cursor *cursor)
 
     if (curdata) {
         if (curdata->texels) {
-            free(curdata->texels);
+            free(curdata->texels); // This should NOT be SDL_free()
         }
         SDL_free(curdata);
     }
@@ -293,7 +293,7 @@ void OGC_draw_cursor(SDL_VideoDevice *_this)
             texture_size = GX_GetTexBufferSize(side, side, GX_TF_RGBA8,
                                                GX_FALSE, 0);
             if (!s_cursor_background.texels || side > s_cursor_background.maxside) {
-                free(s_cursor_background.texels);
+                free(s_cursor_background.texels); // This should NOT be SDL_free()
                 s_cursor_background.texels = memalign(32, texture_size);
                 s_cursor_background.maxside = side;
             }

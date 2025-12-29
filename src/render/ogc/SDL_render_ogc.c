@@ -542,7 +542,7 @@ static bool OGC_RenderGeometry(SDL_Renderer *renderer, void *vertices,
         SDL_FColor *c = (SDL_FColor*)(vertex + sizeof(SDL_FPoint));
 
         GX_Position2f32(vertex_xy->x, vertex_xy->y);
-        GX_Color4u8((u8)(c->r * 255.0f), (u8)(c->g * 255.0f), 
+        GX_Color4u8((u8)(c->r * 255.0f), (u8)(c->g * 255.0f),
                     (u8)(c->b * 255.0f), (u8)(c->a * 255.0f));
         if (texture) {
             SDL_FPoint *vertex_uv = (SDL_FPoint *)(vertex + sizeof(SDL_FPoint) + sizeof(SDL_FColor));
@@ -697,7 +697,7 @@ static void OGC_DestroyTexture(SDL_Renderer *renderer, SDL_Texture *texture)
     OGC_TextureData *ogc_tex = texture->internal;
 
     if (ogc_tex) {
-        free(ogc_tex->texels);
+        free(ogc_tex->texels); // This should NOT be SDL_free()
         SDL_free(ogc_tex);
         texture->internal = NULL;
     }

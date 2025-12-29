@@ -48,6 +48,8 @@ class SdlPlatform(Enum):
     Tvos = "tvos"
     Msvc = "msvc"
     N3ds = "n3ds"
+    GameCube = "gamecube"
+    Wii = "wii"
     PowerPC = "powerpc"
     PowerPC64 = "powerpc64"
     Ps2 = "ps2"
@@ -138,6 +140,8 @@ JOB_SPECS = {
     "haiku": JobSpec(name="Haiku",                                          os=JobOs.UbuntuLatest,      platform=SdlPlatform.Haiku,       artifact="SDL-haiku-x64",          container="ghcr.io/haiku/cross-compiler:x86_64-r1beta5", ),
     "loongarch64": JobSpec(name="LoongArch64",                              os=JobOs.UbuntuLatest,      platform=SdlPlatform.LoongArch64, artifact="SDL-loongarch64", ),
     "n3ds": JobSpec(name="Nintendo 3DS",                                    os=JobOs.UbuntuLatest,      platform=SdlPlatform.N3ds,        artifact="SDL-n3ds",               container="devkitpro/devkitarm:latest", ),
+    "gamecube": JobSpec(name="Nintendo GameCube",                           os=JobOs.UbuntuLatest,      platform=SdlPlatform.GameCube,    artifact="SDL-gamecube",           container="ghcr.io/extremscorner/libogc2:latest", ),
+    "wii": JobSpec(name="Nintendo Wii",                                     os=JobOs.UbuntuLatest,      platform=SdlPlatform.Wii,         artifact="SDL-wii",                container="ghcr.io/extremscorner/libogc2:latest", ),
     "ppc": JobSpec(name="PowerPC",                                          os=JobOs.UbuntuLatest,      platform=SdlPlatform.PowerPC,     artifact="SDL-ppc",                container="dockcross/linux-ppc:latest", ),
     "ppc64": JobSpec(name="PowerPC64",                                      os=JobOs.UbuntuLatest,      platform=SdlPlatform.PowerPC64,   artifact="SDL-ppc64le",            container="dockcross/linux-ppc64le:latest", ),
     "ps2": JobSpec(name="Sony PlayStation 2",                               os=JobOs.UbuntuLatest,      platform=SdlPlatform.Ps2,         artifact="SDL-ps2",                container="ps2dev/ps2dev:latest", ),
@@ -733,6 +737,36 @@ def spec_to_job(spec: JobSpec, key: str, trackmem_symbol_names: bool) -> JobDeta
             job.cc_from_cmake = True
             job.cmake_toolchain_file = "${DEVKITPRO}/cmake/3DS.cmake"
             job.binutils_strings = "/opt/devkitpro/devkitARM/bin/arm-none-eabi-strings"
+            job.static_lib = StaticLibType.A
+        case SdlPlatform.GameCube:
+            job.cmake_generator = "Unix Makefiles"
+            job.cmake_build_arguments.append("-j$(nproc)")
+            job.ccache = False
+            job.shared = False
+            job.apt_packages = []
+            job.clang_tidy = False
+            job.run_tests = False
+            job.cc_from_cmake = True
+            job.cmake_toolchain_file = "${DEVKITPRO}/cmake/GameCube.cmake"
+            job.cmake_arguments.extend((
+                "-DDKP_OGC_PLATFORM_LIBRARY=libogc2",
+            ))
+            job.binutils_strings = "/opt/devkitpro/devkitPPC/bin/powerpc-eabi-strings"
+            job.static_lib = StaticLibType.A
+        case SdlPlatform.Wii:
+            job.cmake_generator = "Unix Makefiles"
+            job.cmake_build_arguments.append("-j$(nproc)")
+            job.ccache = False
+            job.shared = False
+            job.apt_packages = []
+            job.clang_tidy = False
+            job.run_tests = False
+            job.cc_from_cmake = True
+            job.cmake_toolchain_file = "${DEVKITPRO}/cmake/Wii.cmake"
+            job.cmake_arguments.extend((
+                "-DDKP_OGC_PLATFORM_LIBRARY=libogc2",
+            ))
+            job.binutils_strings = "/opt/devkitpro/devkitPPC/bin/powerpc-eabi-strings"
             job.static_lib = StaticLibType.A
         case SdlPlatform.Msys2:
             job.ccache = True

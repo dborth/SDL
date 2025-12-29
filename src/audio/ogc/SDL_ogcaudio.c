@@ -34,7 +34,7 @@
 static bool FindAudioFormat(SDL_AudioDevice *device)
 {
     bool found_valid_format = false;
-    
+
     // Try to find a compatible format
     switch (device->spec.format) {
     case SDL_AUDIO_S8:
@@ -112,7 +112,7 @@ static void audio_frame_finished(AESNDPB *pb, u32 state)
 static bool OGCAUDIO_OpenDevice(SDL_AudioDevice *device)
 {
     struct SDL_PrivateAudioData *hidden =
-        memalign(32, sizeof(struct SDL_PrivateAudioData));
+        SDL_memalign(32, sizeof(struct SDL_PrivateAudioData));
     if (!hidden) {
         return false;
     }
