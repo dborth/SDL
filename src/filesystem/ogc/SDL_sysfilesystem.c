@@ -81,6 +81,13 @@ char *SDL_SYS_GetPrefPath(const char *org, const char *app)
     return pref_path;
 }
 
+// TODO
+char *SDL_SYS_GetUserFolder(SDL_Folder folder)
+{
+    SDL_Unsupported();
+    return NULL;
+}
+
 #endif /* SDL_FILESYSTEM_OGC */
 
 /* vi: set sts=4 ts=4 sw=4 expandtab: */
