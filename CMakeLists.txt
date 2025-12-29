@@ -207,7 +207,7 @@ if(EMSCRIPTEN)
   set(SDL_SHARED_AVAILABLE OFF)
 endif()
 
-if(VITA OR PSP OR PS2 OR N3DS OR RISCOS OR NGAGE)
+if(VITA OR PSP OR PS2 OR N3DS OR RISCOS OR NGAGE OR OGC)
   set(SDL_SHARED_AVAILABLE OFF)
 endif()
 
@@ -910,7 +910,7 @@ if(SDL_ASSEMBLY)
     # TODO: Those all seem to be quite GCC specific - needs to be
     # reworked for better compiler support
 
-    if(SDL_ALTIVEC)
+    if(SDL_ALTIVEC AND NOT OGC)
       cmake_push_check_state()
       string(APPEND CMAKE_REQUIRED_FLAGS " -maltivec")
       check_c_source_compiles("
@@ -3445,6 +3445,80 @@ elseif(NGAGE)
       scdv
       gdi
   )
+
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/io/n3ds/*.c")
+
+elseif(OGC)
+  if(CMAKE_SYSTEM_NAME MATCHES "NintendoWii")
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/wii/*.c")
+  else()
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/gamecube/*.c")
+  endif()
+
+  if(SDL_AUDIO)
+    set(SDL_AUDIO_DRIVER_OGC 1)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/audio/ogc/*.c")
+    set(HAVE_SDL_AUDIO TRUE)
+    sdl_link_dependency(aesnd LIBS aesnd)
+  endif()
+
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/locale/unix/*.c")
+  set(HAVE_SDL_LOCALE TRUE)
+
+  set(SDL_FILESYSTEM_OGC 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/ogc/*.c")
+  set(HAVE_SDL_FILESYSTEM TRUE)
+
+  set(SDL_FSOPS_POSIX 1)
+  sdl_sources("${SDL3_SOURCE_DIR}/src/filesystem/posix/SDL_sysfsops.c")
+  set(HAVE_SDL_FSOPS TRUE)
+
+  if(SDL_JOYSTICK)
+    set(SDL_JOYSTICK_OGC 1)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/joystick/ogc/*.c")
+    set(HAVE_SDL_JOYSTICK TRUE)
+  endif()
+
+  set(SDL_THREAD_OGC 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/thread/ogc/*.c")
+  sdl_sources(
+    "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_sysrwlock.c"
+    "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_systls.c"
+  )
+  set(HAVE_SDL_THREADS TRUE)
+
+  set(SDL_TIME_OGC 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/time/ogc/*.c")
+  set(HAVE_SDL_TIME TRUE)
+
+  set(SDL_TIMER_OGC 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/timer/ogc/*.c")
+  set(HAVE_SDL_TIMERS TRUE)
+
+  if(SDL_VIDEO)
+    set(SDL_VIDEO_DRIVER_OGC 1)
+    set(SDL_VIDEO_RENDER_OGC 1)
+    sdl_glob_sources(
+      "${SDL3_SOURCE_DIR}/src/video/ogc/*.c"
+      "${SDL3_SOURCE_DIR}/src/render/ogc/*.c"
+    )
+    set(SDL_VIDEO_OPENGL 0)
+    set(HAVE_SDL_VIDEO TRUE)
+    if(SDL_OPENGL)
+      pkg_search_module(OPENGX opengl REQUIRED IMPORTED_TARGET)
+      set(SDL_VIDEO_OPENGL 1)
+      set(HAVE_OPENGL TRUE)
+      sdl_link_dependency(opengl LIBS opengx)
+      sdl_include_directories(INTERFACE ${OPENGX_INCLUDE_DIRS})
+    endif()
+  endif()
+
+  sdl_shared_link_options("${OGC_ARCH_SETTINGS} ${OGC_LINKER_FLAGS}")
+  if(NINTENDO_WII)
+    sdl_link_dependency(wii LIBS wiiuse bte wiikeyboard)
+  endif()
+  sdl_link_dependency(base LIBS ogc fat)
+
 endif()
 
 sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/SDL_dialog.c)

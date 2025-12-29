@@ -383,6 +383,7 @@ extern SDL_RenderDriver PS2_RenderDriver;
 extern SDL_RenderDriver PSP_RenderDriver;
 extern SDL_RenderDriver SW_RenderDriver;
 extern SDL_RenderDriver VITA_GXM_RenderDriver;
+extern SDL_RenderDriver OGC_RenderDriver;
 extern SDL_RenderDriver GPU_RenderDriver;
 
 // Clean up any renderers at shutdown

@@ -494,4 +494,15 @@
 #define SDL_PLATFORM_HURD 1
 #endif
 
+#if defined(__gamecube__) || defined(__wii__)
+
+/**
+ * A preprocessor macro that is only defined if compiling for Nintendo GameCube
+ * and Wii.
+ *
+ * \since This macro is available since SDL 3.2.0.
+ */
+#define SDL_PLATFORM_OGC 1
+#endif
+
 #endif /* SDL_platform_defines_h_ */
