@@ -41,8 +41,9 @@
 #include <ogc/gx.h>
 #include <ogc/system.h>
 #include <ogc/video.h>
-
+#ifdef SDL_VIDEO_OPENGL
 #include <opengx.h>
+#endif
 
 #define DEFAULT_FIFO_SIZE 256 * 1024
 
@@ -361,9 +362,10 @@ void OGC_video_flip(SDL_VideoDevice *_this, bool vsync)
 {
     SDL_VideoData *videodata = _this->internal;
     void *xfb = OGC_video_get_xfb(_this);
-
+#ifdef SDL_VIDEO_OPENGL
     if (_this->gl_config.driver_loaded &&
         ogx_prepare_swap_buffers() < 0) return;
+#endif
 
 #ifdef __wii__
     OGC_draw_cursor(_this);
