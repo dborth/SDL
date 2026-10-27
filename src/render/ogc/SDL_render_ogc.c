@@ -769,6 +769,7 @@ static bool OGC_CreateRenderer(SDL_Renderer *renderer, SDL_Window *window, SDL_P
 
     renderer->name = OGC_RenderDriver.name;
     SDL_AddSupportedTextureFormat(renderer, SDL_PIXELFORMAT_RGB565);
+    SDL_AddSupportedTextureFormat(renderer, SDL_PIXELFORMAT_ARGB1555);
     SDL_AddSupportedTextureFormat(renderer, SDL_PIXELFORMAT_RGBA8888);
     SDL_AddSupportedTextureFormat(renderer, SDL_PIXELFORMAT_ARGB8888);
     SDL_AddSupportedTextureFormat(renderer, SDL_PIXELFORMAT_RGB24);

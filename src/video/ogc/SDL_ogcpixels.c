@@ -63,6 +63,11 @@ static u8 texture_format_from_SDL(const SDL_PixelFormat format)
         return GX_TF_CI8;
     case SDL_PIXELFORMAT_RGB565:
         return GX_TF_RGB565;
+    case SDL_PIXELFORMAT_ARGB1555:
+        /* GX has no ARGB1555; RGB5A3 is the closest match: opaque texels share
+         * the exact same bit layout, while transparent ones are stored with
+         * 4-bit colour. */
+        return GX_TF_RGB5A3;
     case SDL_PIXELFORMAT_RGB24:
     case SDL_PIXELFORMAT_RGBA8888:
     case SDL_PIXELFORMAT_ARGB8888:
@@ -239,6 +244,88 @@ static void pixels_16_from_texture(void *pixels, int16_t pitch, int16_t h,
     }
 }
 
+/* ARGB1555 <-> GX_TF_RGB5A3.
+ *
+ * RGB5A3 texels are 16 bits wide and come in two flavours, chosen by bit 15:
+ *   1RRRRRGGGGGBBBBB   opaque, 5 bits per colour channel
+ *   0AAARRRRGGGGBBBB   translucent, 3-bit alpha and 4 bits per colour channel
+ *
+ * ARGB1555 (1 alpha bit + 5 bits per channel) therefore maps 1:1 for opaque
+ * pixels. For transparent pixels we keep the top 4 bits of each channel (so
+ * that linear filtering doesn't pull in black fringes) and set alpha to 0. */
+static inline u16 argb1555_to_rgb5a3(u16 c)
+{
+    if (c & 0x8000) {
+        return c;
+    }
+    return (u16)((((c >> 11) & 0xf) << 8) |
+                 (((c >> 6) & 0xf) << 4) |
+                 ((c >> 1) & 0xf));
+}
+
+static inline u16 rgb5a3_to_argb1555(u16 t)
+{
+    if (t & 0x8000) {
+        return t;
+    }
+
+    u16 r = (t >> 8) & 0xf;
+    u16 g = (t >> 4) & 0xf;
+    u16 b = t & 0xf;
+    r = (r << 1) | (r >> 3);
+    g = (g << 1) | (g >> 3);
+    b = (b << 1) | (b >> 3);
+
+    /* Only 1 bit of alpha: anything at least half transparent becomes fully
+     * transparent, the rest becomes opaque. */
+    u16 alpha = ((t >> 12) & 0x7) >= 4 ? 0x8000 : 0;
+    return alpha | (r << 10) | (g << 5) | b;
+}
+
+/* Byte offset of texel (x, y) in a 16-bit-per-texel GX texture, which is laid
+ * out as 4x4 texel tiles (32 bytes each), row-major both inside a tile and
+ * between tiles. */
+static inline u32 texel16_offset(int x, int y, int tex_width)
+{
+    int tiles_per_row = (tex_width + 3) >> 2;
+
+    return (u32)((((y >> 2) * tiles_per_row + (x >> 2)) << 5) +
+                 ((((y & 3) << 2) + (x & 3)) << 1));
+}
+
+static void pixels_ARGB1555_to_texture(void *pixels, const SDL_Rect *rect,
+                                       int16_t pitch, void *texture,
+                                       int16_t tex_width)
+{
+    for (int row = 0; row < rect->h; row++) {
+        const u16 *src = (const u16 *)((const u8 *)pixels + pitch * row);
+        int y = rect->y + row;
+
+        for (int col = 0; col < rect->w; col++) {
+            int x = rect->x + col;
+            u32 offset = texel16_offset(x, y, tex_width);
+
+            *(u16 *)((u8 *)texture + offset) = argb1555_to_rgb5a3(*src++);
+        }
+    }
+}
+
+static void pixels_ARGB1555_from_texture(void *pixels, int16_t w, int16_t h,
+                                         int16_t pitch, void *texture)
+{
+    int tex_width = (w + 3) / 4 * 4;
+
+    for (int y = 0; y < h; y++) {
+        u16 *dst = (u16 *)((u8 *)pixels + pitch * y);
+
+        for (int x = 0; x < w; x++) {
+            u32 offset = texel16_offset(x, y, tex_width);
+
+            *dst++ = rgb5a3_to_argb1555(*(u16 *)((u8 *)texture + offset));
+        }
+    }
+}
+
 static inline void set_pixel_8_to_texture(int x, int y, u8 color, void *texture, int tex_width)
 {
     u8 *tex = texture;
@@ -298,6 +385,9 @@ void OGC_pixels_to_texture(void *pixels, const SDL_PixelFormat format,
     case SDL_PIXELFORMAT_RGB565:
         pixels_16_to_texture(pixels, rect, pitch, texture, tex_width);
         break;
+    case SDL_PIXELFORMAT_ARGB1555:
+        pixels_ARGB1555_to_texture(pixels, rect, pitch, texture, tex_width);
+        break;
     case SDL_PIXELFORMAT_RGB24:
         pixels_RGB_to_texture(pixels, rect, pitch, texture, tex_width);
         break;
@@ -327,6 +417,9 @@ void OGC_pixels_from_texture(void *pixels, const SDL_PixelFormat format,
         break;
     case SDL_PIXELFORMAT_RGB565:
         pixels_16_from_texture(pixels, pitch, h, texture);
+        break;
+    case SDL_PIXELFORMAT_ARGB1555:
+        pixels_ARGB1555_from_texture(pixels, w, h, pitch, texture);
         break;
     case SDL_PIXELFORMAT_RGB24:
         pixels_RGB_from_texture(pixels, w, h, pitch, texture);
