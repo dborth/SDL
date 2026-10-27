@@ -237,7 +237,7 @@ void OGC_draw_cursor(SDL_VideoDevice *_this)
     /* mark the texture as invalid */
     s_cursor_background.x = SHRT_MIN;
 
-    if (!mouse || !mouse->cursor_shown ||
+    if (!mouse || !mouse->cursor_visible ||
         !mouse->cur_cursor || !mouse->cur_cursor->internal) {
         return;
     }

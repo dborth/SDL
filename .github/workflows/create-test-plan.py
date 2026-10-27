@@ -750,6 +750,10 @@ def spec_to_job(spec: JobSpec, key: str, trackmem_symbol_names: bool) -> JobDeta
             job.cmake_toolchain_file = "${DEVKITPRO}/cmake/GameCube.cmake"
             job.cmake_arguments.extend((
                 "-DDKP_OGC_PLATFORM_LIBRARY=libogc2",
+                # libogc2's OpenGLConfig.cmake triggers a CMake developer warning
+                # (find_package_handle_standard_args name mismatch), which the
+                # workflow's -Werror=dev would turn into a configure failure.
+                "-Wno-error=dev",
             ))
             job.binutils_strings = "/opt/devkitpro/devkitPPC/bin/powerpc-eabi-strings"
             job.static_lib = StaticLibType.A
@@ -765,6 +769,10 @@ def spec_to_job(spec: JobSpec, key: str, trackmem_symbol_names: bool) -> JobDeta
             job.cmake_toolchain_file = "${DEVKITPRO}/cmake/Wii.cmake"
             job.cmake_arguments.extend((
                 "-DDKP_OGC_PLATFORM_LIBRARY=libogc2",
+                # libogc2's OpenGLConfig.cmake triggers a CMake developer warning
+                # (find_package_handle_standard_args name mismatch), which the
+                # workflow's -Werror=dev would turn into a configure failure.
+                "-Wno-error=dev",
             ))
             job.binutils_strings = "/opt/devkitpro/devkitPPC/bin/powerpc-eabi-strings"
             job.static_lib = StaticLibType.A
