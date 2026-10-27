@@ -25,7 +25,6 @@
 #include <aesndlib.h>
 #include <ogcsys.h>
 
-#include <ogc/mutex.h>
 #include <ogc/semaphore.h>
 
 
@@ -45,7 +44,6 @@ struct SDL_PrivateAudioData
     Uint8 bytes_per_sample;
     s8 nextbuf;
     s8 playing_buffer;
-    mutex_t lock;
     sem_t available_buffers;
 };
 

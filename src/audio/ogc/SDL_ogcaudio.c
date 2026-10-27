@@ -28,6 +28,7 @@
 #include "SDL_ogcaudio.h"
 
 #include <malloc.h>
+#include <ogc/machine/processor.h>
 
 #define OGCAUDIO_DRIVER_NAME "ogc"
 
@@ -68,20 +69,31 @@ static bool FindAudioFormat(SDL_AudioDevice *device)
     return found_valid_format;
 }
 
-/* fully local functions related to the wavebufs / DSP, not the same as the SDL-wide mixer lock */
-static SDL_INLINE void contextLock(SDL_AudioDevice *device)
+/* Fully local functions related to the wavebufs / DSP, not the same as the SDL-wide mixer lock.
+ *
+ * audio_frame_finished() runs from the AESND/DSP interrupt, and the Wii has a single core, so the
+ * state it shares with the audio thread is protected by briefly disabling interrupts. A mutex is the
+ * wrong tool here: if the interrupt arrives while the audio thread holds it, nothing can ever release
+ * it. (An LWP mutex would also use up one of libogc2's 64 kernel mutexes.)
+ * Keep these sections very short. */
+static SDL_INLINE u32 contextLock(SDL_AudioDevice *device)
 {
-    LWP_MutexLock(device->hidden->lock);
+    u32 level;
+    (void)device;
+    _CPU_ISR_Disable(level);
+    return level;
 }
 
-static SDL_INLINE void contextUnlock(SDL_AudioDevice *device)
+static SDL_INLINE void contextUnlock(SDL_AudioDevice *device, u32 level)
 {
-    LWP_MutexUnlock(device->hidden->lock);
+    (void)device;
+    _CPU_ISR_Restore(level);
 }
 
 static void audio_frame_finished(AESNDPB *pb, u32 state)
 {
     SDL_AudioDevice *device = (SDL_AudioDevice *)AESND_GetVoiceUserData(pb);
+    u32 level;
 
     if (state == VOICE_STATE_STREAM) {
         const size_t buffer_size = DMA_BUFFER_SIZE;
@@ -91,21 +103,21 @@ static void audio_frame_finished(AESNDPB *pb, u32 state)
         /* Immediately send the next buffer to the DSP. It's important that
          * AESND_SetVoiceBuffer() gets called before this callback returns, or
          * some audio gaps might be audible. */
-        contextLock(device);
+        level = contextLock(device);
         playing_buffer = (device->hidden->playing_buffer + 1) % NUM_BUFFERS;
         buffer = device->hidden->dma_buffers[playing_buffer];
         AESND_SetVoiceBuffer(pb, buffer, buffer_size);
         device->hidden->playing_buffer = playing_buffer;
-        contextUnlock(device);
+        contextUnlock(device, level);
 
         /* If a frame has finished playing, it means that the corresponding
          * buffer is no longer in use and can be filled up again. We signal
          * this event to the audio thread via a semaphore. */
         LWP_SemPost(device->hidden->available_buffers);
     } else if (state == VOICE_STATE_STOPPED) {
-        contextLock(device);
+        level = contextLock(device);
         device->hidden->playing_buffer = -1;
-        contextUnlock(device);
+        contextUnlock(device, level);
     }
 }
 
@@ -130,7 +142,6 @@ static bool OGCAUDIO_OpenDevice(SDL_AudioDevice *device)
     AESND_Pause(true);
 
     /* Initialise internal state */
-    LWP_MutexInit(&hidden->lock, false);
     /* We set the initial number of available buffers to NUM_BUFFERS - 1, since
      * SDL first calls GetDeviceBuf() and starts filling it without first
      * calling WaitDevice(). So we consider the first buffer to be busy already
@@ -178,16 +189,17 @@ static bool OGCAUDIO_OpenDevice(SDL_AudioDevice *device)
 static bool OGCAUDIO_PlayDevice(SDL_AudioDevice *device, const Uint8 *buffer, int buflen)
 {
     void *dma_buffer;
+    u32 level;
 
     /* This only sends the first audio buffer. The following ones will always
      * be sent from the audio_frame_finished() callback, without having to
      * switch between threads. */
-    contextLock(device);
+    level = contextLock(device);
     if (device->hidden->playing_buffer < 0) {
         dma_buffer = device->hidden->dma_buffers[++device->hidden->playing_buffer];
         AESND_SetVoiceBuffer(device->hidden->voice, dma_buffer, DMA_BUFFER_SIZE);
     }
-    contextUnlock(device);
+    contextUnlock(device, level);
 
     return true;
 }
@@ -216,14 +228,14 @@ static void OGCAUDIO_CloseDevice(SDL_AudioDevice *device)
     if (device->hidden) {
         struct SDL_PrivateAudioData *hidden = device->hidden;
 
-        LWP_SemDestroy(hidden->available_buffers);
         if (hidden->voice) {
             AESND_SetVoiceStop(hidden->voice, true);
-            AESND_FreeVoice(hidden->voice);
+            AESND_FreeVoice(hidden->voice);   /* no more callbacks after this */
             hidden->voice = NULL;
         }
-
         AESND_Pause(true);
+
+        LWP_SemDestroy(hidden->available_buffers);
         SDL_free(device->hidden);
         device->hidden = NULL;
     }

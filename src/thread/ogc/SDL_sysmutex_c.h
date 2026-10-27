@@ -23,9 +23,14 @@
 #ifndef SDL_mutex_c_h_
 #define SDL_mutex_c_h_
 
+/* libogc2 allocates every LWP/pthread mutex from a fixed pool of 64 (LWP_MAX_MUTEXES, a compile-time
+ * constant in ogc/lwp_config.h). SDL creates mutexes freely (every SDL_PropertiesID, audio stream, ...),
+ * so the OGC backend does not use LWP mutexes: SDL_Mutex is an atomic flag + owner + recursion count. */
 struct SDL_Mutex
 {
-    mutex_t id;
+    SDL_AtomicInt locked;   /* 0 = free, 1 = held */
+    SDL_ThreadID owner;     /* valid only while locked; only ever compared with the caller's own ID */
+    int recursive;          /* extra (nested) lock count held by `owner` */
 };
 
 #endif /* SDL_mutex_c_h_ */

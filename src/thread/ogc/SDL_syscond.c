@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -20,63 +20,72 @@
 */
 #include "SDL_internal.h"
 
-#include <errno.h>
-#include <ogc/cond.h>
-#include <ogc/timesupp.h>
+#include <ogc/lwp.h>
 
 #include "SDL_sysmutex_c.h"
 
+/* Kernel-object-free condition variable for libogc2, to go with SDL_sysmutex.c (see SDL_sysmutex_c.h).
+ * Waiters poll: they yield briefly, then sleep.
+ *
+ * Semantics: a counter of waiters and a counter of pending wakeups. SDL_SignalCondition() grants one
+ * wakeup if a waiter exists; SDL_BroadcastCondition() grants one per current waiter. A wakeup goes to
+ * whichever waiter polls first, not necessarily the longest-waiting one, which is fine for the usual
+ * "wait in a loop on a predicate" use that SDL (and its generic rwlock) rely on.
+ * As with any condition variable, the mutex must be held (once) when calling the wait function.
+ */
+
 struct SDL_Condition
 {
-    cond_t cond;
+    SDL_AtomicInt waiters;
+    SDL_AtomicInt signals;   /* wakeups granted but not yet consumed (clamped to `waiters`) */
 };
 
 /* Create a condition variable */
 SDL_Condition *SDL_CreateCondition(void)
 {
-    SDL_Condition *cond;
-
-    cond = (SDL_Condition *)SDL_calloc(1, sizeof(*cond));
-    if (cond) {
-        if (LWP_CondInit(&cond->cond) != 0) {
-            SDL_SetError("LWP_CondInit() failed");
-            SDL_free(cond);
-            cond = NULL;
-        }
-    }
-    return cond;
+    return (SDL_Condition *)SDL_calloc(1, sizeof(SDL_Condition));
 }
 
 /* Destroy a condition variable */
 void SDL_DestroyCondition(SDL_Condition *cond)
 {
-    if (cond) {
-        LWP_CondDestroy(cond->cond);
-        SDL_free(cond);
-    }
+    SDL_free(cond);
 }
 
 /* Restart one of the threads that are waiting on the condition variable */
 void SDL_SignalCondition(SDL_Condition *cond)
 {
-    if (cond) {
-        const int rc = LWP_CondSignal(cond->cond);
-        SDL_assert(rc == 0);
-        (void)rc;
+    if (!cond) {
+        return;
+    }
+    for (;;) {
+        const int waiters = SDL_GetAtomicInt(&cond->waiters);
+        const int signals = SDL_GetAtomicInt(&cond->signals);
+        if (signals >= waiters) {
+            return; /* nobody (left) to wake */
+        }
+        if (SDL_CompareAndSwapAtomicInt(&cond->signals, signals, signals + 1)) {
+            return;
+        }
     }
 }
 
 /* Restart all threads that are waiting on the condition variable */
 void SDL_BroadcastCondition(SDL_Condition *cond)
 {
-    if (cond) {
-        const int rc = LWP_CondBroadcast(cond->cond);
-        SDL_assert(rc == 0);
-        (void)rc;
+    if (!cond) {
+        return;
+    }
+    for (;;) {
+        const int waiters = SDL_GetAtomicInt(&cond->waiters);
+        const int signals = SDL_GetAtomicInt(&cond->signals);
+        if (signals >= waiters || SDL_CompareAndSwapAtomicInt(&cond->signals, signals, waiters)) {
+            return;
+        }
     }
 }
 
-/* Wait on the condition variable for at most 'timeoutNS' nanoseconds.
+/* Wait on the condition variable for at most 'timeoutNS' nanoseconds (negative = forever).
    The mutex must be locked before entering this function!
    The mutex is unlocked during the wait, and locked again after the wait.
 
@@ -99,9 +108,6 @@ Thread B:
  */
 bool SDL_WaitConditionTimeoutNS(SDL_Condition *cond, SDL_Mutex *mutex, Sint64 timeoutNS)
 {
-    bool retval = true;
-    struct timespec tv;
-
     if (!cond) {
         return SDL_InvalidParamError("cond");
     }
@@ -109,23 +115,41 @@ bool SDL_WaitConditionTimeoutNS(SDL_Condition *cond, SDL_Mutex *mutex, Sint64 ti
         return SDL_InvalidParamError("mutex");
     }
 
-    if (timeoutNS < 0) {
-        /* Wait indefinitely */
-        if (LWP_CondWait(cond->cond, mutex->id) != 0) {
-            retval = false;
-        }
-    } else {
-        /* Convert nanoseconds to timespec */
-        Sint64 ms = timeoutNS / 1000000LL;
-        tv.tv_sec = (long)(ms / TB_MSPERSEC);
-        tv.tv_nsec = (long)((ms % TB_MSPERSEC) * TB_NSPERMS);
+    const Uint64 deadline = (timeoutNS < 0) ? 0 : SDL_GetTicksNS() + (Uint64)timeoutNS;
+    bool signaled = false;
+    int spins = 0;
 
-        const int rc = LWP_CondTimedWait(cond->cond, mutex->id, &tv);
-        if (rc != 0) {
-            retval = (rc == ETIMEDOUT) ? false : false;
+    SDL_AddAtomicInt(&cond->waiters, 1);   /* registered while still holding the mutex, so no signal is missed */
+    SDL_UnlockMutex(mutex);
+
+    for (;;) {
+        const int signals = SDL_GetAtomicInt(&cond->signals);
+        if (signals > 0 && SDL_CompareAndSwapAtomicInt(&cond->signals, signals, signals - 1)) {
+            signaled = true;
+            break;
+        }
+        if (timeoutNS >= 0 && SDL_GetTicksNS() >= deadline) {
+            break;
+        }
+        if (spins < 4) {
+            ++spins;
+            LWP_YieldThread();
+        } else {
+            SDL_DelayNS(200 * 1000);
         }
     }
-    return retval;
+
+    SDL_AddAtomicInt(&cond->waiters, -1);
+    for (;;) { /* a timed-out waiter must not leave a wakeup behind for a waiter that isn't there */
+        const int waiters = SDL_GetAtomicInt(&cond->waiters);
+        const int signals = SDL_GetAtomicInt(&cond->signals);
+        if (signals <= waiters || SDL_CompareAndSwapAtomicInt(&cond->signals, signals, waiters)) {
+            break;
+        }
+    }
+
+    SDL_LockMutex(mutex);
+    return signaled;
 }
 
 /* vi: set ts=4 sw=4 expandtab: */
