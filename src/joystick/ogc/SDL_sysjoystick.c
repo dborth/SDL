@@ -307,8 +307,8 @@ static void update_rumble(SDL_Joystick *joystick)
  */
 static bool OGC_JoystickInit(void)
 {
-    const char *split_joystick_env = getenv("SDL_WII_JOYSTICK_SPLIT");
-    split_joysticks = split_joystick_env && strcmp(split_joystick_env, "1") == 0;
+    const char *split_joystick_env = SDL_getenv_unsafe("SDL_WII_JOYSTICK_SPLIT");
+    split_joysticks = split_joystick_env && SDL_strcmp(split_joystick_env, "1") == 0;
 
     PAD_Init();
     /* We don't call WPAD_Init() here, since it's already been called by
@@ -318,9 +318,9 @@ static bool OGC_JoystickInit(void)
     s_accelerometers_as_axes = true;  // Default to enabled
     /* If this is set, the Wiimote directional keys will be translated. */
     {
-        const char *sideways_joystick_env = getenv("SDL_WII_JOYSTICK_SIDEWAYS");
+        const char *sideways_joystick_env = SDL_getenv_unsafe("SDL_WII_JOYSTICK_SIDEWAYS");
         s_wiimote_sideways =
-            sideways_joystick_env && strcmp(sideways_joystick_env, "1") == 0;
+            sideways_joystick_env && SDL_strcmp(sideways_joystick_env, "1") == 0;
     }
 #endif
 

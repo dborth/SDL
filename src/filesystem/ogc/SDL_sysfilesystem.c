@@ -51,7 +51,7 @@ char *SDL_SYS_GetBasePath(void)
         return "/";
     }
 
-    len = strlen(buffer);
+    len = SDL_strlen(buffer);
     if (len > 0 && buffer[len - 1] != '/') {
         buffer[len] = '/';
         buffer[len + 1] = '\0';

@@ -143,7 +143,7 @@ static SDL_Cursor *OGC_CreateCursor(SDL_Surface *surface, int hot_x, int hot_y)
 
     texture_size = GX_GetTexBufferSize(surface->w, surface->h, GX_TF_RGBA8,
                                        GX_FALSE, 0);
-    curdata->texels = memalign(32, texture_size);
+    curdata->texels = memalign(32, texture_size); // This should NOT be SDL_memalign()
     if (!curdata->texels) {
         SDL_OutOfMemory();
         SDL_free(curdata);
@@ -296,7 +296,7 @@ void OGC_draw_cursor(SDL_VideoDevice *_this)
                                                GX_FALSE, 0);
             if (!s_cursor_background.texels || side > s_cursor_background.maxside) {
                 free(s_cursor_background.texels); // This should NOT be SDL_free()
-                s_cursor_background.texels = memalign(32, texture_size);
+                s_cursor_background.texels = memalign(32, texture_size); // This should NOT be SDL_memalign()
                 s_cursor_background.maxside = side;
             }
             DCInvalidateRange(s_cursor_background.texels, texture_size);

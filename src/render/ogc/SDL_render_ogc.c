@@ -181,7 +181,7 @@ static bool OGC_CreateTexture(SDL_Renderer *renderer, SDL_Texture *texture, SDL_
     ogc_tex->needed_stages = (ogc_tex->format == GX_TF_CI8) ? 2 : 1;
     texture_size = GX_GetTexBufferSize(texture->w, texture->h, ogc_tex->format,
                                        GX_FALSE, 0);
-    ogc_tex->texels = memalign(32, texture_size);
+    ogc_tex->texels = memalign(32, texture_size); // This should NOT be SDL_memalign()
     if (!ogc_tex->texels) {
         SDL_free(ogc_tex);
         return false;
@@ -253,7 +253,7 @@ static SDL_Texture *create_efb_texture(OGC_RenderData *data, SDL_Window *window)
     texture->h = h;
     texture_size = GX_GetTexBufferSize(texture->w, texture->h, ogc_tex->format,
                                        GX_FALSE, 0);
-    ogc_tex->texels = memalign(32, texture_size);
+    ogc_tex->texels = memalign(32, texture_size); // This should NOT be SDL_memalign()
     if (!ogc_tex->texels) goto fail_texels_alloc;
 
     texture->internal = ogc_tex;

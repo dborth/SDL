@@ -86,7 +86,7 @@ bool SDL_OGC_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window,
         return false;
     }
     texture_size = GX_GetTexBufferSize(w, h, GX_TF_RGBA8, GX_FALSE, 0);
-    windowdata->texels = memalign(32, texture_size);
+    windowdata->texels = memalign(32, texture_size); // This should NOT be SDL_memalign()
     if (!windowdata->texels) {
         SDL_free(windowdata->pixels);
         SDL_free(windowdata);
