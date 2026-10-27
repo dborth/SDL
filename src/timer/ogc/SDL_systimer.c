@@ -36,12 +36,12 @@ Uint64 SDL_GetPerformanceFrequency(void)
     return secs_to_ticks(1);
 }
 
-void SDL_SYS_DelayNS(Uint64 ms)
+void SDL_SYS_DelayNS(Uint64 ns)
 {
-    struct timespec tv;
-    tv.tv_sec = ms / TB_MSPERSEC;
-    tv.tv_nsec = (ms % TB_MSPERSEC) * TB_NSPERMS;
-    nanosleep(&tv, NULL);
+	struct timespec tv;
+	tv.tv_sec = (time_t)(ns / SDL_NS_PER_SECOND);
+	tv.tv_nsec = (long)(ns % SDL_NS_PER_SECOND);
+	nanosleep(&tv, NULL);
 }
 
 #endif /* SDL_TIMER_OGC */
