@@ -60,6 +60,11 @@ char *SDL_SYS_GetBasePath(void)
     return SDL_strdup(buffer);
 }
 
+char *SDL_SYS_GetExeName(void)
+{
+    return NULL; // no EXE name on this system.
+}
+
 char *SDL_SYS_GetPrefPath(const char *org, const char *app)
 {
     char *pref_path = NULL;
