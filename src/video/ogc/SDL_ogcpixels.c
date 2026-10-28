@@ -293,9 +293,9 @@ static inline u32 texel16_offset(int x, int y, int tex_width)
                  ((((y & 3) << 2) + (x & 3)) << 1));
 }
 
-static void pixels_ARGB1555_to_texture(void *pixels, const SDL_Rect *rect,
-                                       int16_t pitch, void *texture,
-                                       int16_t tex_width)
+static void pixels_ARGB1555_to_texture_generic(void *pixels, const SDL_Rect *rect,
+                                               int16_t pitch, void *texture,
+                                               int16_t tex_width)
 {
     for (int row = 0; row < rect->h; row++) {
         const u16 *src = (const u16 *)((const u8 *)pixels + pitch * row);
@@ -306,6 +306,49 @@ static void pixels_ARGB1555_to_texture(void *pixels, const SDL_Rect *rect,
             u32 offset = texel16_offset(x, y, tex_width);
 
             *(u16 *)((u8 *)texture + offset) = argb1555_to_rgb5a3(*src++);
+        }
+    }
+}
+
+/* Fast path for the common case (a whole-frame upload): rect on 4x4 tile boundaries. An opaque ARGB1555 texel is
+ * already a valid RGB5A3 texel (see above), so when all four texels of a tile row are opaque the row is copied as two
+ * 32-bit words. Rows with any translucent texel take the exact per-texel conversion. Anything not tile-aligned uses
+ * the generic loop. */
+static void pixels_ARGB1555_to_texture(void *pixels, const SDL_Rect *rect,
+                                       int16_t pitch, void *texture,
+                                       int16_t tex_width)
+{
+    if ((rect->x | rect->y | rect->w | rect->h) & 3) {
+        pixels_ARGB1555_to_texture_generic(pixels, rect, pitch, texture, tex_width);
+        return;
+    }
+
+    const int tiles_per_row = (tex_width + 3) >> 2;
+
+    for (int ty = 0; ty < rect->h; ty += 4) {
+        const u8 *src_row = (const u8 *)pixels + (size_t)pitch * ty;
+        u32 *dst = (u32 *)((u8 *)texture +
+                           ((((rect->y + ty) >> 2) * tiles_per_row + (rect->x >> 2)) << 5));
+
+        for (int tx = 0; tx < rect->w; tx += 4, dst += 8) {
+            const u8 *src = src_row + tx * 2;
+
+            for (int r = 0; r < 4; r++, src += pitch) {
+                const u32 a = ((const u32 *)src)[0];
+                const u32 b = ((const u32 *)src)[1];
+
+                if ((a & b & 0x80008000u) == 0x80008000u) {
+                    dst[r * 2] = a;
+                    dst[r * 2 + 1] = b;
+                } else {
+                    const u16 *s = (const u16 *)src;
+                    u16 *d = (u16 *)(dst + r * 2);
+                    d[0] = argb1555_to_rgb5a3(s[0]);
+                    d[1] = argb1555_to_rgb5a3(s[1]);
+                    d[2] = argb1555_to_rgb5a3(s[2]);
+                    d[3] = argb1555_to_rgb5a3(s[3]);
+                }
+            }
         }
     }
 }
