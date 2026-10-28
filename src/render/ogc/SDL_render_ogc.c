@@ -717,8 +717,6 @@ static void OGC_DestroyRenderer(SDL_Renderer *renderer)
 
         SDL_free(data);
     }
-
-    SDL_free(renderer);
 }
 
 static bool OGC_SetVSync(SDL_Renderer *renderer, int vsync)
