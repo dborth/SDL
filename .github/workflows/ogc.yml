@@ -1,9 +1,10 @@
-name: Wii/GameCube (libogc2) build
+name: Wii / GameCube (libogc2) build
 
+# Every push to ogc-port is published as the rolling "ogc-latest" pre-release.
+# These are continuous builds, not certified releases.
 on:
   push:
     branches: [ogc-port]
-    tags: ['ogc-*']
   pull_request:
     branches: [ogc-port]
 
@@ -16,27 +17,27 @@ permissions:
 
 jobs:
   build:
+    name: Build (${{ matrix.console }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { console: Wii,      slug: wii,      toolchain: Wii.cmake }
+          - { console: GameCube, slug: gamecube, toolchain: GameCube.cmake }
     # devkitPPC + libogc2 + libogc2 portlibs. (devkitpro/devkitppc + wii-dev is plain
-    # libogc, which is not ABI compatible.) Same image smw-wii uses. Pin to a digest
-    # once things settle; versions.txt records what each build actually used.
+    # libogc, which is not ABI compatible.) Same image smw-wii and fceugx use. Pin to a
+    # digest once things settle; versions-*.txt records what each build actually used.
     container: ghcr.io/extremscorner/libogc2:latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Name this build
-        id: meta
-        run: |
-          git config --global --add safe.directory '*'
-          if [ "$GITHUB_REF_TYPE" = tag ]; then V="$GITHUB_REF_NAME"; else V="ogc-$(git rev-parse --short HEAD)"; fi
-          echo "name=sdl3-libogc2-wii-$V" >> "$GITHUB_OUTPUT"
-
       - name: Configure
         run: |
           cmake -S . -B build \
-            -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/Wii.cmake \
+            -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/${{ matrix.toolchain }} \
             -DDKP_OGC_PLATFORM_LIBRARY=libogc2 \
             -DCMAKE_BUILD_TYPE=Release \
             -DSDL_LIBICONV=OFF -DSDL_SYSTEM_ICONV=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
@@ -46,27 +47,65 @@ jobs:
 
       - name: Install to staging and package
         run: |
+          git config --global --add safe.directory '*'
           DESTDIR="$PWD/stage" cmake --install build
           find stage -name libSDL3.a | grep -q . || { echo "libSDL3.a missing"; exit 1; }
           find stage -name 'SDL3Config.cmake' | grep -q . || { echo "SDL3Config.cmake missing"; exit 1; }
           mkdir -p dist
-          tar -C stage -czf "dist/${{ steps.meta.outputs.name }}.tar.gz" .
+          tar -C stage -czf "dist/sdl3-libogc2-${{ matrix.slug }}.tar.gz" .
           {
             echo "== sdl3 ==";      grep -E 'define SDL_(MAJOR|MINOR|MICRO)_VERSION ' include/SDL3/SDL_version.h
             echo "== commit ==";    git rev-parse HEAD
             echo "== compiler =="; ${DEVKITPPC}/bin/powerpc-eabi-gcc --version | head -1
             echo "== packages =="; (dkp-pacman -Q devkitPPC libogc2 || pacman -Q devkitPPC libogc2) 2>&1
-          } | tee dist/versions.txt
-          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+          } | tee "dist/versions-${{ matrix.slug }}.txt"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sdl3-ogc
+          name: sdl3-ogc-${{ matrix.slug }}
+          path: dist/
+
+  # pacman package (Wii + GameCube in one, built with catnip). Experimental: it
+  # cannot fail the build or block the release until it has proven itself.
+  package:
+    name: Package (pacman)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container: ghcr.io/extremscorner/libogc2:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: makepkg
+        run: |
+          git config --global --add safe.directory '*'
+          id builder >/dev/null 2>&1 || useradd -m builder
+          runuser -u builder -- git config --global --add safe.directory '*'
+          mkdir -p /tmp/srcdest /tmp/pkgdest /tmp/build
+          chown -R builder /tmp/srcdest /tmp/pkgdest /tmp/build packaging
+          MAKEPKG=$(command -v dkp-makepkg || command -v makepkg)
+          echo "using $MAKEPKG"
+          cd packaging
+          runuser -u builder -- env "PATH=$PATH" "DEVKITPRO=$DEVKITPRO" "DEVKITPPC=$DEVKITPPC" \
+            SRCDEST=/tmp/srcdest PKGDEST=/tmp/pkgdest BUILDDIR=/tmp/build \
+            "$MAKEPKG" --nodeps --noconfirm --cleanbuild
+          mkdir -p ../dist
+          cp /tmp/pkgdest/*.pkg.tar.* ../dist/
+          ls -l ../dist
+
+      - name: List package contents
+        run: (dkp-pacman -Qlp dist/*.pkg.tar.* || pacman -Qlp dist/*.pkg.tar.*) 2>&1 | head -40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-ogc-pkg
           path: dist/
 
   release:
-    needs: build
-    if: github.ref_type == 'tag'
+    name: Publish ogc-latest
+    needs: [build, package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ogc-port'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -74,16 +113,35 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
-          name: sdl3-ogc
+          pattern: sdl3-ogc-*
+          merge-multiple: true
           path: dist
-      - name: Create release
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Move tag
         run: |
-          PREV=$(git tag --list 'ogc-*' --sort=-v:refname | sed -n 2p)
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --verify-tag --prerelease \
-            --title "SDL3 for Wii (libogc2) $GITHUB_REF_NAME" \
-            --generate-notes ${PREV:+--notes-start-tag "$PREV"}
+          git tag -f ogc-latest
+          git push -f origin ogc-latest
+
+      - uses: ncipollo/release-action@v1
+        with:
+          tag: ogc-latest
+          name: SDL3 for Wii / GameCube (libogc2), continuous build
+          prerelease: true
+          makeLatest: false
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: "dist/*"
+          body: |
+            Continuous build of the `ogc-port` branch. **Not a certified release.**
+
+            Commit: ${{ github.sha }}
+
+            - `sdl3-libogc2-wii.tar.gz`, `sdl3-libogc2-gamecube.tar.gz`: install trees, extract with `tar -xzf <file> -C /`
+            - `sdl3-libogc2-*.pkg.tar.*`: pacman package (Wii + GameCube), install with `dkp-pacman -U <file>`
+            - `versions-*.txt`: SDL and toolchain versions used for this build
