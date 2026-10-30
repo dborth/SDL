@@ -13,11 +13,11 @@ Both track SDL `release-3.4.x` and are static-library only (no shared libs, no d
 
 ## Use it
 
-**pacman package** (devkitPro pacman): download the `.pkg.tar.*` from the release, then
+**pacman package** (devkitPro pacman), straight from the continuous release:
 
 ```sh
-sudo dkp-pacman -U sdl3-libogc2-*.pkg.tar.zst      # Wii + GameCube
-sudo dkp-pacman -U sdl3-wut-*.pkg.tar.zst  # Wii U
+sudo dkp-pacman -U https://github.com/dborth/SDL/releases/download/ogc-latest/sdl3-libogc2-latest.pkg.tar.zst   # Wii + GameCube
+sudo dkp-pacman -U https://github.com/dborth/SDL/releases/download/wut-latest/sdl3-wut-latest.pkg.tar.zst      # Wii U
 ```
 
 **Install tree:** the `sdl3-*.tar.gz` files contain the library, headers and CMake config under the devkitPro prefix:
