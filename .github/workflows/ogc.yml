@@ -1,7 +1,5 @@
 name: Wii / GameCube (libogc2) build
 
-# Every push to ogc-port is published as the rolling "ogc-latest" pre-release.
-# These are continuous builds, not certified releases.
 on:
   push:
     branches: [ogc-port]
@@ -25,9 +23,6 @@ jobs:
         include:
           - { console: Wii,      slug: wii,      toolchain: Wii.cmake }
           - { console: GameCube, slug: gamecube, toolchain: GameCube.cmake }
-    # devkitPPC + libogc2 + libogc2 portlibs. (devkitpro/devkitppc + wii-dev is plain
-    # libogc, which is not ABI compatible.) Same image smw-wii and fceugx use. Pin to a
-    # digest once things settle; versions-*.txt records what each build actually used.
     container: ghcr.io/extremscorner/libogc2:latest
     steps:
       - uses: actions/checkout@v4
@@ -65,12 +60,9 @@ jobs:
           name: sdl3-ogc-${{ matrix.slug }}
           path: dist/
 
-  # pacman package (Wii + GameCube in one, built with catnip). Experimental: it
-  # cannot fail the build or block the release until it has proven itself.
   package:
     name: Package (pacman)
     runs-on: ubuntu-latest
-    continue-on-error: true
     container: ghcr.io/extremscorner/libogc2:latest
     steps:
       - uses: actions/checkout@v4
@@ -81,12 +73,12 @@ jobs:
         run: |
           if command -v apt-get >/dev/null; then
             apt-get update
-            apt-get install -y --no-install-recommends fakeroot
+            apt-get install -y --no-install-recommends fakeroot zstd
             command -v bsdtar >/dev/null || apt-get install -y --no-install-recommends libarchive-tools
           else
-            (command -v dkp-pacman || command -v pacman) | head -1 | xargs -I{} {} -Sy --noconfirm --needed fakeroot libarchive
+            (command -v dkp-pacman || command -v pacman) | head -1 | xargs -I{} {} -Sy --noconfirm --needed fakeroot libarchive zstd
           fi
-          command -v fakeroot && command -v bsdtar
+          command -v fakeroot && command -v bsdtar && command -v zstd
 
       - name: makepkg
         run: |
@@ -149,7 +141,7 @@ jobs:
           removeArtifacts: true
           artifacts: "dist/*"
           body: |
-            Continuous build of the `ogc-port` branch. **Not a certified release.**
+            Continuous build of the `ogc-port` branch.
 
             Commit: ${{ github.sha }}
 
