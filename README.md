@@ -1,11 +1,11 @@
-# SDL3 for Nintendo Wii and Wii U
+# SDL3 for Nintendo Wii, GameCube and Wii U
 
-This is a fork of [libsdl-org/SDL](https://github.com/libsdl-org/SDL) carrying SDL3 ports for two Nintendo consoles. The ports live on their own branches; **`main` is only a mirror of upstream**.
+This is a fork of [libsdl-org/SDL](https://github.com/libsdl-org/SDL) carrying SDL3 ports for three Nintendo consoles. The ports live on their own branches; **`main` is only a mirror of upstream**.
 
 | Console | Branch | Toolchain | Build | Latest release |
 | --- | --- | --- | --- | --- |
-| Wii | [`ogc-port`](https://github.com/dborth/SDL/tree/ogc-port) | devkitPPC + [libogc2](https://github.com/extremscorner/libogc2) | [![Wii build](https://github.com/dborth/SDL/actions/workflows/ogc.yml/badge.svg?branch=ogc-port)](https://github.com/dborth/SDL/actions/workflows/ogc.yml?query=branch%3Aogc-port) | [`ogc-*` releases](https://github.com/dborth/SDL/releases?q=ogc-) |
-| Wii U | [`wut-port`](https://github.com/dborth/SDL/tree/wut-port) | devkitPPC + [wut](https://github.com/devkitPro/wut) | [![Wii U build](https://github.com/dborth/SDL/actions/workflows/wiiu.yml/badge.svg?branch=wut-port)](https://github.com/dborth/SDL/actions/workflows/wiiu.yml?query=branch%3Awut-port) | [`wut-*` releases](https://github.com/dborth/SDL/releases?q=wut-) |
+| Wii/GameCube | [`ogc-port`](https://github.com/dborth/SDL/tree/ogc-port) | devkitPPC + [libogc2](https://github.com/extremscorner/libogc2) | [![Wii/GameCube build](https://github.com/dborth/SDL/actions/workflows/ogc.yml/badge.svg?branch=ogc-port)](https://github.com/dborth/SDL/actions/workflows/ogc.yml?query=branch%3Aogc-port) | [`ogc-*` releases](https://github.com/dborth/SDL/releases?q=ogc-) |
+| Wii U | [`wut-port`](https://github.com/dborth/SDL/tree/wut-port) | devkitPPC + [wut](https://github.com/devkitPro/wut) | [![Wii U build](https://github.com/dborth/SDL/actions/workflows/wut.yml/badge.svg?branch=wut-port)](https://github.com/dborth/SDL/actions/workflows/wut.yml?query=branch%3Awut-port) | [`wut-*` releases](https://github.com/dborth/SDL/releases?q=wut-) |
 
 Both track SDL `release-3.4.x`. The ports are developed against [Super Mario War](https://github.com/dborth/smw-wii), which boots and runs on both.
 
@@ -27,7 +27,7 @@ target_link_libraries(myapp PRIVATE SDL3::SDL3)
 **From source:**
 
 ```sh
-git clone --branch ogc-port --single-branch --depth 1 https://github.com/dborth/SDL.git   # Wii
+git clone --branch ogc-port --single-branch --depth 1 https://github.com/dborth/SDL.git   # Wii/GameCube
 git clone --branch wut-port --single-branch --depth 1 https://github.com/dborth/SDL.git   # Wii U
 ```
 
