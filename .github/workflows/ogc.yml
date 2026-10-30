@@ -1,0 +1,89 @@
+name: Wii/GameCube (libogc2) build
+
+on:
+  push:
+    branches: [ogc-port]
+    tags: ['ogc-*']
+  pull_request:
+    branches: [ogc-port]
+
+concurrency:
+  group: ogc-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # devkitPPC + libogc2 + libogc2 portlibs. (devkitpro/devkitppc + wii-dev is plain
+    # libogc, which is not ABI compatible.) Same image smw-wii uses. Pin to a digest
+    # once things settle; versions.txt records what each build actually used.
+    container: ghcr.io/extremscorner/libogc2:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Name this build
+        id: meta
+        run: |
+          git config --global --add safe.directory '*'
+          if [ "$GITHUB_REF_TYPE" = tag ]; then V="$GITHUB_REF_NAME"; else V="ogc-$(git rev-parse --short HEAD)"; fi
+          echo "name=sdl3-libogc2-wii-$V" >> "$GITHUB_OUTPUT"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/Wii.cmake \
+            -DDKP_OGC_PLATFORM_LIBRARY=libogc2 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_LIBICONV=OFF -DSDL_SYSTEM_ICONV=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Install to staging and package
+        run: |
+          DESTDIR="$PWD/stage" cmake --install build
+          find stage -name libSDL3.a | grep -q . || { echo "libSDL3.a missing"; exit 1; }
+          find stage -name 'SDL3Config.cmake' | grep -q . || { echo "SDL3Config.cmake missing"; exit 1; }
+          mkdir -p dist
+          tar -C stage -czf "dist/${{ steps.meta.outputs.name }}.tar.gz" .
+          {
+            echo "== sdl3 ==";      grep -E 'define SDL_(MAJOR|MINOR|MICRO)_VERSION ' include/SDL3/SDL_version.h
+            echo "== commit ==";    git rev-parse HEAD
+            echo "== compiler =="; ${DEVKITPPC}/bin/powerpc-eabi-gcc --version | head -1
+            echo "== packages =="; (dkp-pacman -Q devkitPPC libogc2 || pacman -Q devkitPPC libogc2) 2>&1
+          } | tee dist/versions.txt
+          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-ogc
+          path: dist/
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdl3-ogc
+          path: dist
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV=$(git tag --list 'ogc-*' --sort=-v:refname | sed -n 2p)
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag --prerelease \
+            --title "SDL3 for Wii (libogc2) $GITHUB_REF_NAME" \
+            --generate-notes ${PREV:+--notes-start-tag "$PREV"}
