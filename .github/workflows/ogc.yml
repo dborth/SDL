@@ -77,6 +77,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install makepkg prerequisites
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update
+            apt-get install -y --no-install-recommends fakeroot
+            command -v bsdtar >/dev/null || apt-get install -y --no-install-recommends libarchive-tools
+          else
+            (command -v dkp-pacman || command -v pacman) | head -1 | xargs -I{} {} -Sy --noconfirm --needed fakeroot libarchive
+          fi
+          command -v fakeroot && command -v bsdtar
+
       - name: makepkg
         run: |
           git config --global --add safe.directory '*'
