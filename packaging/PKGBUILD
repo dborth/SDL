@@ -1,0 +1,46 @@
+# Builds SDL3 (Wii + GameCube, libogc2) from the commit checked out in this repository.
+# Modelled on extremscorner/pacman-packages libogc2-sdl2, so it can be proposed there.
+#
+#   cd packaging && SRCDEST=/tmp/srcdest dkp-makepkg
+#
+# Anything uncommitted is not included: makepkg clones the repo at HEAD.
+
+_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_commit="$(git -C "${_repo}" rev-parse HEAD)"
+
+_pkgname=SDL3
+pkgname="libogc2-${_pkgname,,}"
+pkgver=3.4.0
+pkgrel=1
+pkgdesc='A library for portable low-level access to a video framebuffer, audio output, mouse, and keyboard. (Version 3)'
+arch=('any')
+url='https://github.com/dborth/SDL/tree/ogc-port'
+license=('Zlib')
+groups=('gamecube-sdl3-libs' 'wii-sdl3-libs')
+depends=('devkitPPC' 'libogc2' 'libogc2-libfat')
+makedepends=('catnip' 'cmake' 'git' 'libogc2-cmake' 'libogc2-opengx')
+optdepends=('libogc2-opengx: OpenGL support')
+options=(!strip libtool staticlibs !buildflags)
+source=("SDL::git+file://${_repo}#commit=${_commit}")
+sha256sums=('SKIP')
+
+pkgver() {
+	cd "${srcdir}/SDL"
+	local h=include/SDL3/SDL_version.h
+	printf '%s.%s.%s.r%s.g%s' \
+		"$(sed -n 's/#define SDL_MAJOR_VERSION *//p' $h)" \
+		"$(sed -n 's/#define SDL_MINOR_VERSION *//p' $h)" \
+		"$(sed -n 's/#define SDL_MICRO_VERSION *//p' $h)" \
+		"$(git rev-list --count HEAD)" \
+		"$(git rev-parse --short HEAD)"
+}
+
+build() {
+	cd "${srcdir}/SDL"
+	catnip build -DSDL_LIBICONV=OFF -DSDL_SYSTEM_ICONV=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+}
+
+package() {
+	cd "${srcdir}/SDL"
+	DESTDIR="${pkgdir}" catnip install
+}
