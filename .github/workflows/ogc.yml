@@ -124,7 +124,18 @@ jobs:
           path: dist
 
       - name: Checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: |
+          cd dist
+          ls -l
+          if ls *.pkg.tar.* >/dev/null 2>&1; then
+            for p in *.pkg.tar.*; do
+              pkg=${p%%-[0-9]*}
+              cp "$p" "$pkg-latest.pkg.tar.${p##*.pkg.tar.}"
+            done
+          else
+            echo "::warning::no pacman package found, publishing without one"
+          fi
+          sha256sum * > SHA256SUMS && cat SHA256SUMS
 
       - name: Move tag
         run: |
@@ -146,5 +157,5 @@ jobs:
             Commit: ${{ github.sha }}
 
             - `sdl3-libogc2-wii.tar.gz`, `sdl3-libogc2-gamecube.tar.gz`: install trees, extract with `tar -xzf <file> -C /`
-            - `sdl3-libogc2-*.pkg.tar.*`: pacman package (Wii + GameCube), install with `dkp-pacman -U <file>`
+            - `*.pkg.tar.*`: pacman package (Wii + GameCube), install with `dkp-pacman -U <file>`. The `*-latest.pkg.tar.*` copy has a stable URL
             - `versions-*.txt`: SDL and toolchain versions used for this build
