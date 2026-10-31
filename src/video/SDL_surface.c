@@ -2086,7 +2086,7 @@ static SDL_Surface *SDL_ConvertSurfaceRectAndColorspace(SDL_Surface *surface, co
         if (set_colorkey_by_color) {
             SDL_Surface *tmp;
             SDL_Surface *tmp2;
-            int converted_colorkey = 0;
+            Uint32 converted_colorkey = 0;
 
             // Create a dummy surface to get the colorkey converted
             tmp = SDL_CreateSurface(1, 1, surface->format);
@@ -2110,8 +2110,31 @@ static SDL_Surface *SDL_ConvertSurfaceRectAndColorspace(SDL_Surface *surface, co
                 goto error;
             }
 
-            // Get the converted colorkey
-            SDL_memcpy(&converted_colorkey, tmp2->pixels, tmp2->fmt->bytes_per_pixel);
+            // Get the converted colorkey.
+            // The pixel is stored in native byte order, so it can't simply be
+            // copied into the low bytes of a wider integer: on big-endian
+            // systems that would put 8/16-bit pixels in the high bytes.
+            {
+                const Uint8 *p = (const Uint8 *)tmp2->pixels;
+                switch (tmp2->fmt->bytes_per_pixel) {
+                case 1:
+                    converted_colorkey = *p;
+                    break;
+                case 2:
+                    converted_colorkey = *(const Uint16 *)p;
+                    break;
+                case 3:
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+                    converted_colorkey = ((Uint32)p[0] << 16) | ((Uint32)p[1] << 8) | p[2];
+#else
+                    converted_colorkey = p[0] | ((Uint32)p[1] << 8) | ((Uint32)p[2] << 16);
+#endif
+                    break;
+                default:
+                    converted_colorkey = *(const Uint32 *)p;
+                    break;
+                }
+            }
 
             SDL_DestroySurface(tmp);
             SDL_DestroySurface(tmp2);

@@ -40,6 +40,10 @@
 #include <kernel.h>
 #endif
 
+#ifdef SDL_PLATFORM_WIIU
+#include <coreinit/atomic.h>
+#endif
+
 #if !defined(HAVE_GCC_ATOMICS) && defined(SDL_PLATFORM_MACOS)
 #include <libkern/OSAtomic.h>
 #endif
@@ -112,6 +116,15 @@ bool SDL_TryLockSpinlock(SDL_SpinLock *lock)
 #elif defined(SDL_PLATFORM_SOLARIS) && !defined(_LP64)
     // Used for Solaris with non-gcc compilers.
     return ((int)atomic_cas_32((volatile uint32_t *)lock, 0, 1) == 0);
+#elif defined(SDL_PLATFORM_WIIU)
+    // No lwarx/stwcx. on Wii U (hardware bug); use coreinit.
+    SDL_COMPILE_TIME_ASSERT(locksize, sizeof(*lock) == sizeof(uint32_t));
+    if (OSCompareAndSwapAtomic((volatile uint32_t *)lock, 0, 1)) {
+        SDL_MemoryBarrierAcquire();
+        return true;
+    }
+    return false;
+
 #elif defined(PS2)
     uint32_t oldintr;
     bool res = false;

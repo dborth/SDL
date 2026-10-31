@@ -484,6 +484,17 @@
 #define SDL_PLATFORM_NGAGE 1
 #endif
 
+#if defined(__WIIU__) || defined(__WUT__)
+
+/**
+ * A preprocessor macro that is only defined if compiling for the Nintendo Wii
+ * U.
+ *
+ * \since This macro is available since SDL 3.4.0.
+ */
+#define SDL_PLATFORM_WIIU 1
+#endif
+
 #ifdef __GNU__
 
 /**

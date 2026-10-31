@@ -178,6 +178,12 @@ set(SDL_GCC_ATOMICS_DEFAULT OFF)
 if(USE_GCC OR USE_CLANG OR USE_INTELCC OR USE_QCC OR USE_TCC)
   set(SDL_GCC_ATOMICS_DEFAULT ON)
 endif()
+if(WIIU)
+  # Wii U has a hardware bug in the load-exclusive and store-exclusive
+  # instructions (lwarx/stwcx.), which the compiler's atomic builtins use.
+  # SDL_atomic.c and SDL_spinlock.c use coreinit atomics instead.
+  set(SDL_GCC_ATOMICS_DEFAULT OFF)
+endif()
 
 # Default option knobs
 set(SDL_LIBC_DEFAULT ON)
@@ -207,7 +213,7 @@ if(EMSCRIPTEN)
   set(SDL_SHARED_AVAILABLE OFF)
 endif()
 
-if(VITA OR PSP OR PS2 OR N3DS OR RISCOS OR NGAGE)
+if(VITA OR PSP OR PS2 OR N3DS OR RISCOS OR NGAGE OR WIIU)
   set(SDL_SHARED_AVAILABLE OFF)
 endif()
 
@@ -402,6 +408,9 @@ dep_option(SDL_TESTS           "Build the test directory" ${SDL3_MAINPROJECT} SD
 dep_option(SDL_INSTALL_TESTS   "Install test-cases" OFF "SDL_INSTALL;NOT SDL_FRAMEWORK" OFF)
 dep_option(SDL_TESTS_LINK_SHARED "link tests to shared SDL library" "${SDL_SHARED}" "SDL_SHARED;SDL_STATIC" "${SDL_SHARED}")
 set(SDL_TESTS_TIMEOUT_MULTIPLIER "1" CACHE STRING "Timeout multiplier to account for really slow machines")
+if(WIIU)
+  option(SDL_WIIU_TOOLS "Build the Wii U test tools in test/wiiu (on-screen console, no SDL video needed)" ON)
+endif()
 
 set_option(SDL_EXAMPLES           "Build the examples directory")
 dep_option(SDL_EXAMPLES_LINK_SHARED "link examples to shared SDL library" "${SDL_SHARED}" "SDL_SHARED;SDL_STATIC" "${SDL_SHARED}")
@@ -504,6 +513,11 @@ if(TARGET SDL3::SDL3-shared)
   add_library(SDL3::SDL3 ALIAS SDL3-shared)
 else()
   add_library(SDL3::SDL3 ALIAS SDL3-static)
+endif()
+
+# The Wii U test tools draw their own output on screen (test/wiiu)
+if(WIIU AND SDL_WIIU_TOOLS)
+  add_subdirectory(test/wiiu "${CMAKE_CURRENT_BINARY_DIR}/wiiu-tools")
 endif()
 
 sdl_pc_link_options("-lSDL3")
@@ -910,7 +924,7 @@ if(SDL_ASSEMBLY)
     # TODO: Those all seem to be quite GCC specific - needs to be
     # reworked for better compiler support
 
-    if(SDL_ALTIVEC)
+    if(SDL_ALTIVEC AND NOT WIIU) # Espresso has paired singles, not AltiVec
       cmake_push_check_state()
       string(APPEND CMAKE_REQUIRED_FLAGS " -maltivec")
       check_c_source_compiles("
@@ -3445,6 +3459,70 @@ elseif(NGAGE)
       scdv
       gdi
   )
+
+elseif(WIIU)
+  # Nintendo Wii U: devkitPPC + wut, configured through the wiiu-cmake toolchain.
+  macro(sdl_wiiu_driver _subsystem _define _have_var)
+    file(GLOB _wiiu_driver_sources CONFIGURE_DEPENDS
+      "${SDL3_SOURCE_DIR}/src/${_subsystem}/wiiu/*.c"
+      "${SDL3_SOURCE_DIR}/src/${_subsystem}/wiiu/*.cpp"
+    )
+    if(_wiiu_driver_sources)
+      set(${_define} 1)
+      if(NOT "${_have_var}" STREQUAL "")
+        set(${_have_var} TRUE)
+      endif()
+      sdl_glob_sources(
+        "${SDL3_SOURCE_DIR}/src/${_subsystem}/wiiu/*.c"
+        "${SDL3_SOURCE_DIR}/src/${_subsystem}/wiiu/*.cpp"
+        "${SDL3_SOURCE_DIR}/src/${_subsystem}/wiiu/*.h"
+      )
+    endif()
+  endmacro()
+
+  if(SDL_AUDIO)
+    sdl_wiiu_driver(audio SDL_AUDIO_DRIVER_WIIU HAVE_SDL_AUDIO)
+  endif()
+
+  if(SDL_JOYSTICK)
+    sdl_wiiu_driver(joystick SDL_JOYSTICK_WIIU HAVE_SDL_JOYSTICK)
+  endif()
+
+  sdl_wiiu_driver(filesystem SDL_FILESYSTEM_WIIU HAVE_SDL_FILESYSTEM)
+
+  # newlib provides the POSIX calls the generic file operations need
+  set(SDL_FSOPS_POSIX 1)
+  sdl_sources("${SDL3_SOURCE_DIR}/src/filesystem/posix/SDL_sysfsops.c")
+  set(HAVE_SDL_FSOPS TRUE)
+
+  sdl_wiiu_driver(thread SDL_THREAD_WIIU HAVE_SDL_THREADS)
+  if(SDL_THREAD_WIIU)
+    sdl_sources(
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syscond.c"
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syscond_c.h"
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_sysrwlock.c"
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_sysrwlock_c.h"
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_systls.c"
+    )
+  endif()
+
+  sdl_wiiu_driver(time SDL_TIME_WIIU HAVE_SDL_TIME)
+  sdl_wiiu_driver(timer SDL_TIMER_WIIU HAVE_SDL_TIMERS)
+
+  if(SDL_VIDEO)
+    sdl_wiiu_driver(video SDL_VIDEO_DRIVER_WIIU HAVE_SDL_VIDEO)
+    sdl_wiiu_driver(render SDL_VIDEO_RENDER_WIIU "")
+  endif()
+
+  file(GLOB _wiiu_cxx_sources CONFIGURE_DEPENDS "${SDL3_SOURCE_DIR}/src/*/wiiu/*.cpp")
+  if(_wiiu_cxx_sources)
+    enable_language(CXX)
+    set_source_files_properties(${_wiiu_cxx_sources} PROPERTIES
+      COMPILE_OPTIONS "-std=gnu++23;-fno-exceptions"
+    )
+  endif()
+
+  sdl_link_dependency(wut LIBS wut)
 endif()
 
 sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/SDL_dialog.c)

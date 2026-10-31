@@ -40,6 +40,10 @@
 #include <android/log.h>
 #endif
 
+#ifdef SDL_PLATFORM_WIIU
+#include <coreinit/debug.h>
+#endif
+
 #include "stdlib/SDL_vacopy.h"
 
 // The size of the stack buffer to use for rendering log messages.
@@ -769,6 +773,10 @@ static void SDLCALL SDL_LogOutput(void *userdata, int category, SDL_LogPriority 
             (void)fprintf(pFile, "%s%s\n", GetLogPriorityPrefix(priority), message);
             (void)fclose(pFile);
         }
+    }
+#elif defined(SDL_PLATFORM_WIIU)
+    {
+        OSReport("SDL: %s%s\n", GetLogPriorityPrefix(priority), message);
     }
 #elif defined(SDL_PLATFORM_VITA)
     {

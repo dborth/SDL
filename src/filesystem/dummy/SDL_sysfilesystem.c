@@ -51,6 +51,7 @@ char *SDL_SYS_GetUserFolder(SDL_Folder folder)
     return NULL;
 }
 
+#ifndef SDL_FSOPS_POSIX // the posix fsops already provide this one
 char *SDL_SYS_GetCurrentDirectory(void)
 {
     const char *base = SDL_GetBasePath();
@@ -60,5 +61,6 @@ char *SDL_SYS_GetCurrentDirectory(void)
 
     return SDL_strdup(base);
 }
+#endif
 
 #endif // SDL_FILESYSTEM_DUMMY || SDL_FILESYSTEM_DISABLED

@@ -1,0 +1,201 @@
+name: Wii U (wut) build
+
+on:
+  push:
+    branches: [wut-port]
+  pull_request:
+    branches: [wut-port]
+
+concurrency:
+  group: wut-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (Wii U)
+    runs-on: ubuntu-latest
+    container: ghcr.io/extremscorner/libogc2:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/WiiU.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_LIBICONV=OFF -DSDL_SYSTEM_ICONV=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Install
+        run: cmake --install build
+
+      - name: Build smoke tests (test/wiiu)
+        run: |
+          cmake -S test/wiiu -B build-hello \
+            -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/WiiU.cmake \
+            -DCMAKE_PREFIX_PATH=${DEVKITPRO}/portlibs/wiiu \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-hello -j"$(nproc)"
+
+      - name: Build upstream tests
+        run: |
+          cmake -S . -B build-tests \
+            -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/WiiU.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_LIBICONV=OFF -DSDL_SYSTEM_ICONV=OFF -DSDL_TESTS=ON -DSDL_EXAMPLES=OFF -DSDL_INSTALL=OFF
+          cmake --build build-tests -j"$(nproc)" --target \
+            testsprite testrendertarget testcontroller testaudio testwm testkeys testmouse testautomation
+          mkdir -p tests
+          find build-tests -name '*.rpx' -exec cp {} tests/ \;
+          ls -l tests
+
+      - name: Package
+        run: |
+          git config --global --add safe.directory '*'
+          DESTDIR="$PWD/stage" cmake --install build
+          find stage -name libSDL3.a | grep -q . || { echo "libSDL3.a missing"; exit 1; }
+          find stage -name 'SDL3Config.cmake' | grep -q . || { echo "SDL3Config.cmake missing"; exit 1; }
+          mkdir -p dist smoke
+          tar -C stage -czf dist/sdl3-wut.tar.gz .
+          find build-hello -name '*.rpx' -exec cp {} smoke/ \;
+          {
+            echo "== sdl3 ==";      grep -E 'define SDL_(MAJOR|MINOR|MICRO)_VERSION ' include/SDL3/SDL_version.h
+            echo "== commit ==";    git rev-parse HEAD
+            echo "== compiler =="; ${DEVKITPPC}/bin/powerpc-eabi-gcc --version | head -1
+            echo "== packages =="; dkp-pacman -Q devkitPPC wut wut-tools wiiu-cmake 2>&1
+          } | tee dist/versions.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-wut-lib
+          path: dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-wut-tests
+          path: tests/*.rpx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-wut-smoke
+          path: smoke/*.rpx
+
+  # pacman package
+  package:
+    name: Package (pacman)
+    runs-on: ubuntu-latest
+    container: ghcr.io/extremscorner/libogc2:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install makepkg prerequisites
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update
+            apt-get install -y --no-install-recommends fakeroot zstd
+            command -v bsdtar >/dev/null || apt-get install -y --no-install-recommends libarchive-tools
+          else
+            (command -v dkp-pacman || command -v pacman) | head -1 | xargs -I{} {} -Sy --noconfirm --needed fakeroot libarchive zstd
+          fi
+          command -v fakeroot && command -v bsdtar && command -v zstd
+
+      - name: makepkg
+        run: |
+          git config --global --add safe.directory '*'
+          id builder >/dev/null 2>&1 || useradd -m builder
+          runuser -u builder -- git config --global --add safe.directory '*'
+          mkdir -p /tmp/srcdest /tmp/pkgdest /tmp/build
+          chown -R builder /tmp/srcdest /tmp/pkgdest /tmp/build packaging
+          MAKEPKG=$(command -v dkp-makepkg || command -v makepkg)
+          echo "using $MAKEPKG"
+          cd packaging
+          runuser -u builder -- env "PATH=$PATH" "DEVKITPRO=$DEVKITPRO" "DEVKITPPC=$DEVKITPPC" \
+            SRCDEST=/tmp/srcdest PKGDEST=/tmp/pkgdest BUILDDIR=/tmp/build \
+            "$MAKEPKG" --nodeps --noconfirm --cleanbuild
+          mkdir -p ../dist
+          cp /tmp/pkgdest/*.pkg.tar.* ../dist/
+          ls -l ../dist
+
+      - name: List package contents
+        run: (dkp-pacman -Qlp dist/*.pkg.tar.* || pacman -Qlp dist/*.pkg.tar.*) 2>&1 | head -40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-wut-pkg
+          path: dist/
+
+  release:
+    name: Publish wut-latest
+    needs: [build, package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/wut-port'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sdl3-wut-lib
+          merge-multiple: true
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdl3-wut-pkg
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdl3-wut-smoke
+          path: smoke
+
+      - name: Zip smoke tests and checksum
+        run: |
+          (cd smoke && zip -q ../dist/sdl3-wut-smoke-tests.zip *.rpx)
+          cd dist
+          ls -l
+          if ls *.pkg.tar.* >/dev/null 2>&1; then
+            for p in *.pkg.tar.*; do
+              pkg=${p%%-[0-9]*}
+              cp "$p" "$pkg-latest.pkg.tar.${p##*.pkg.tar.}"
+            done
+          else
+            echo "::warning::no pacman package found, publishing without one"
+          fi
+          sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Move tag
+        run: |
+          git tag -f wut-latest
+          git push -f origin wut-latest
+
+      - uses: ncipollo/release-action@v1
+        with:
+          tag: wut-latest
+          name: SDL3 for Wii U (wut), continuous build
+          prerelease: true
+          makeLatest: false
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: "dist/*"
+          body: |
+            Continuous build of the `wut-port` branch.
+
+            Commit: ${{ github.sha }}
+
+            - `sdl3-wut.tar.gz`: install tree, extract with `tar -xzf sdl3-wut.tar.gz -C /`
+            - `sdl3-wut-*.pkg.tar.*`: pacman package, install with `dkp-pacman -U <file>`
+            - `sdl3-wut-smoke-tests.zip`: `.rpx` smoke tests
+            - `versions.txt`: SDL and toolchain versions used for this build

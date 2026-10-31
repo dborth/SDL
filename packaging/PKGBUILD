@@ -1,0 +1,50 @@
+# Builds SDL3 (Wii U, wut) from the commit checked out in this repository.
+#
+#   cd packaging && SRCDEST=/tmp/srcdest dkp-makepkg
+#
+# Anything uncommitted is not included: makepkg clones the repo at HEAD.
+
+_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_commit="$(git -C "${_repo}" rev-parse HEAD)"
+
+pkgname=sdl3-wut
+pkgver=3.4.0
+pkgrel=1
+pkgdesc='SDL3 for the Nintendo Wii U'
+arch=('any')
+url='https://github.com/dborth/SDL/tree/wut-port'
+license=('Zlib')
+groups=('wiiu-sdl3-libs')
+depends=('wut')
+makedepends=('cmake' 'git' 'wiiu-cmake' 'dkp-toolchain-vars')
+provides=('wiiu-sdl3')
+conflicts=('wiiu-sdl3')
+options=(!strip libtool staticlibs !buildflags)
+source=("SDL::git+file://${_repo}#commit=${_commit}")
+sha256sums=('SKIP')
+
+pkgver() {
+	cd "${srcdir}/SDL"
+	local h=include/SDL3/SDL_version.h
+	printf '%s.%s.%s.r%s.g%s' \
+		"$(sed -n 's/#define SDL_MAJOR_VERSION *//p' $h)" \
+		"$(sed -n 's/#define SDL_MINOR_VERSION *//p' $h)" \
+		"$(sed -n 's/#define SDL_MICRO_VERSION *//p' $h)" \
+		"$(git rev-list --count HEAD)" \
+		"$(git rev-parse --short HEAD)"
+}
+
+build() {
+	cd "${srcdir}/SDL"
+	cmake -S . -B build \
+		-DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/WiiU.cmake" \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX="${DEVKITPRO}/portlibs/wiiu" \
+		-DSDL_LIBICONV=OFF -DSDL_SYSTEM_ICONV=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+	cmake --build build
+}
+
+package() {
+	cd "${srcdir}/SDL"
+	DESTDIR="${pkgdir}" cmake --install build
+}

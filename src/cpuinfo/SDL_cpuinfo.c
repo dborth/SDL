@@ -91,6 +91,11 @@
 #ifdef SDL_PLATFORM_3DS
 #include <3ds.h>
 #endif
+
+#ifdef SDL_PLATFORM_WIIU
+#include <coreinit/core.h>
+#include <coreinit/memory.h>
+#endif
 #ifdef SDL_PLATFORM_PS2
 #include <kernel.h>
 #endif
@@ -633,6 +638,10 @@ static int SDL_NumLogicalCPUCores = 0;
 int SDL_GetNumLogicalCPUCores(void)
 {
     if (!SDL_NumLogicalCPUCores) {
+#ifdef SDL_PLATFORM_WIIU
+        // Retail Wii U consoles always have 3 cores; ask coreinit rather than rely on sysconf().
+        SDL_NumLogicalCPUCores = (int)OSGetCoreCount();
+#endif
 #if defined(HAVE_SYSCONF) && defined(_SC_NPROCESSORS_ONLN)
         if (SDL_NumLogicalCPUCores <= 0) {
             SDL_NumLogicalCPUCores = (int)sysconf(_SC_NPROCESSORS_ONLN);
@@ -1127,6 +1136,19 @@ static int SDL_SystemRAM = 0;
 int SDL_GetSystemRAM(void)
 {
     if (!SDL_SystemRAM) {
+#ifdef SDL_PLATFORM_WIIU
+        /* MEM2 is where malloc() gets its memory and where the application's
+           data lives. It is the size of the application's MEM2 area, not the
+           console's 2 GiB: the OS keeps the rest. MEM1 (32 MiB, used for the
+           GX2 heap) and the foreground bucket are not counted, the same
+           choice as the libgui HAL (WutPlatform::getMemoryFreeInfo). */
+        if (SDL_SystemRAM <= 0) {
+            uint32_t addr = 0, size = 0;
+            if (OSGetMemBound(OS_MEM2, &addr, &size) == 0) {
+                SDL_SystemRAM = (int)(size / (1024 * 1024));
+            }
+        }
+#endif
 #if defined(HAVE_SYSCONF) && defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
         if (SDL_SystemRAM <= 0) {
             SDL_SystemRAM = (int)((Sint64)sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGESIZE) / (1024 * 1024));

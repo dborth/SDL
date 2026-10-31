@@ -55,6 +55,29 @@ bool SDL_CopyFile(const char *oldpath, const char *newpath)
     return SDL_SYS_CopyFile(oldpath, newpath);
 }
 
+#ifdef SDL_PLATFORM_WIIU
+// Length of a leading "[device:]/vol/<mount point>" (for example
+// "fs:/vol/external01"), or 0. FSA cannot make or stat the device or /vol, so
+// SDL_CreateDirectory must start below the mount point.
+static size_t WiiUMountPrefixLength(const char *path)
+{
+    const char *s = path;
+    const char *colon = SDL_strchr(path, ':');
+    const char *slash = SDL_strchr(path, '/');
+    if (colon && (!slash || colon < slash)) {
+        s = colon + 1;
+    }
+    if (SDL_strncmp(s, "/vol/", 5) != 0) {
+        return 0;
+    }
+    s += 5;
+    while (*s && *s != '/') {
+        s++;
+    }
+    return (size_t)(s - path);
+}
+#endif
+
 bool SDL_CreateDirectory(const char *path)
 {
     CHECK_PARAM(!path) {
@@ -82,6 +105,9 @@ bool SDL_CreateDirectory(const char *path)
         }
 
         if (!retval) {
+            #ifdef SDL_PLATFORM_WIIU
+            const size_t mountlen = WiiUMountPrefixLength(parents);
+            #endif
             for (char *ptr = parents; *ptr; ptr++) {
                 const char ch = *ptr;
                 #ifdef SDL_PLATFORM_WINDOWS
@@ -94,6 +120,11 @@ bool SDL_CreateDirectory(const char *path)
                 if (issep && ((ptr - parents) == 0)) {
                     continue; // it's just the root directory, skip it.
                 }
+                #ifdef SDL_PLATFORM_WIIU
+                if (issep && ((size_t)(ptr - parents) <= mountlen)) {
+                    continue; // "fs:" and "/vol/external01" can't be created, skip them.
+                }
+                #endif
                 #endif
 
                 if (issep) {

@@ -281,6 +281,10 @@ extern SDL_DECLSPEC void SDLCALL SDL_MemoryBarrierAcquireFunction(void);
 #elif SDL_HAS_BUILTIN(__atomic_thread_fence) || (defined(__GNUC__) && (__GNUC__ >= 5))
 #define SDL_MemoryBarrierRelease()   __atomic_thread_fence(__ATOMIC_RELEASE)
 #define SDL_MemoryBarrierAcquire()   __atomic_thread_fence(__ATOMIC_ACQUIRE)
+#elif defined(SDL_PLATFORM_WIIU)
+// Espresso is a 750-derived core; use the full "sync" rather than lwsync.
+#define SDL_MemoryBarrierRelease()   __asm__ __volatile__ ("sync" : : : "memory")
+#define SDL_MemoryBarrierAcquire()   __asm__ __volatile__ ("sync" : : : "memory")
 #elif defined(__GNUC__) && (defined(__powerpc__) || defined(__ppc__))
 #define SDL_MemoryBarrierRelease()   __asm__ __volatile__ ("lwsync" : : : "memory")
 #define SDL_MemoryBarrierAcquire()   __asm__ __volatile__ ("lwsync" : : : "memory")

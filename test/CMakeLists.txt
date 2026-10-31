@@ -565,6 +565,13 @@ if(N3DS)
     endforeach()
 endif()
 
+if((WIIU OR CMAKE_SYSTEM_NAME STREQUAL "CafeOS") AND COMMAND wut_create_rpx)
+    # wiiu-cmake's helper: converts each test's ELF into an .rpx next to it
+    foreach(APP ${SDL_TEST_EXECUTABLES})
+        wut_create_rpx(${APP})
+    endforeach()
+endif()
+
 if(RISCOS)
     set(SDL_TEST_EXECUTABLES_AIF)
     foreach(APP ${SDL_TEST_EXECUTABLES})

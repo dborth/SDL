@@ -33,8 +33,17 @@
 #include <atomic.h>
 #endif
 
+#ifdef SDL_PLATFORM_WIIU
+// Wii U has a hardware bug in the load-exclusive/store-exclusive instructions
+// (lwarx/stwcx.), so every operation below goes through coreinit instead of
+// compiler builtins.
+#include <coreinit/atomic.h>
+#endif
+
 // The __atomic intrinsics showed up in different times for different compilers.
-#if (defined(__GNUC__) && (__GNUC__ >= 5)) || (defined(__clang__) && defined(HAVE_GCC_ATOMICS))
+#if defined(SDL_PLATFORM_WIIU)
+// Not usable: the compiler would emit lwarx/stwcx. loops. See above.
+#elif (defined(__GNUC__) && (__GNUC__ >= 5)) || (defined(__clang__) && defined(HAVE_GCC_ATOMICS))
 #define HAVE_ATOMIC_LOAD_N 1
 #define HAVE_ATOMIC_EXCHANGE_N 1
 #else
@@ -69,7 +78,7 @@
   Contributed by Bob Pendleton, bob@pendleton.com
 */
 
-#if !defined(HAVE_MSC_ATOMICS) && !defined(HAVE_GCC_ATOMICS) && !defined(SDL_PLATFORM_MACOS) && !defined(SDL_PLATFORM_SOLARIS)
+#if !defined(HAVE_MSC_ATOMICS) && !defined(HAVE_GCC_ATOMICS) && !defined(SDL_PLATFORM_MACOS) && !defined(SDL_PLATFORM_SOLARIS) && !defined(SDL_PLATFORM_WIIU)
 #define EMULATE_CAS 1
 #endif
 
@@ -98,6 +107,9 @@ bool SDL_CompareAndSwapAtomicInt(SDL_AtomicInt *a, int oldval, int newval)
     return _InterlockedCompareExchange((long *)&a->value, (long)newval, (long)oldval) == (long)oldval;
 #elif defined(HAVE_GCC_ATOMICS)
     return __sync_bool_compare_and_swap(&a->value, oldval, newval);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_cas, sizeof(uint32_t) == sizeof(a->value));
+    return OSCompareAndSwapAtomic((volatile uint32_t *)&a->value, (uint32_t)oldval, (uint32_t)newval);
 #elif defined(SDL_PLATFORM_MACOS) // this is deprecated in 10.12 sdk; favor gcc atomics.
     return OSAtomicCompareAndSwap32Barrier(oldval, newval, &a->value);
 #elif defined(SDL_PLATFORM_SOLARIS)
@@ -126,6 +138,9 @@ bool SDL_CompareAndSwapAtomicU32(SDL_AtomicU32 *a, Uint32 oldval, Uint32 newval)
     return _InterlockedCompareExchange((long *)&a->value, (long)newval, (long)oldval) == (long)oldval;
 #elif defined(HAVE_GCC_ATOMICS)
     return __sync_bool_compare_and_swap(&a->value, oldval, newval);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_cas, sizeof(uint32_t) == sizeof(a->value));
+    return OSCompareAndSwapAtomic((volatile uint32_t *)&a->value, (uint32_t)oldval, (uint32_t)newval);
 #elif defined(SDL_PLATFORM_MACOS) // this is deprecated in 10.12 sdk; favor gcc atomics.
     return OSAtomicCompareAndSwap32Barrier((int32_t)oldval, (int32_t)newval, (int32_t *)&a->value);
 #elif defined(SDL_PLATFORM_SOLARIS)
@@ -153,6 +168,9 @@ bool SDL_CompareAndSwapAtomicPointer(void **a, void *oldval, void *newval)
     return _InterlockedCompareExchangePointer(a, newval, oldval) == oldval;
 #elif defined(HAVE_GCC_ATOMICS)
     return __sync_bool_compare_and_swap(a, oldval, newval);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_cas_ptr, sizeof(uint32_t) == sizeof(*a));
+    return OSCompareAndSwapAtomic((volatile uint32_t *)a, (uint32_t)(uintptr_t)oldval, (uint32_t)(uintptr_t)newval);
 #elif defined(SDL_PLATFORM_MACOS) && defined(__LP64__)  // this is deprecated in 10.12 sdk; favor gcc atomics.
     return OSAtomicCompareAndSwap64Barrier((int64_t)oldval, (int64_t)newval, (int64_t *)a);
 #elif defined(SDL_PLATFORM_MACOS) && !defined(__LP64__) // this is deprecated in 10.12 sdk; favor gcc atomics.
@@ -189,6 +207,9 @@ int SDL_SetAtomicInt(SDL_AtomicInt *a, int v)
     // __atomic_exchange_n() instead on all modern compilers.
     __sync_synchronize();
     return __sync_lock_test_and_set(&a->value, v);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_set, sizeof(uint32_t) == sizeof(a->value));
+    return (int)OSSwapAtomic((volatile uint32_t *)&a->value, (uint32_t)v);
 #elif defined(SDL_PLATFORM_SOLARIS)
     SDL_COMPILE_TIME_ASSERT(atomic_set, sizeof(uint_t) == sizeof(a->value));
     return (int)atomic_swap_uint((volatile uint_t *)&a->value, v);
@@ -215,6 +236,9 @@ Uint32 SDL_SetAtomicU32(SDL_AtomicU32 *a, Uint32 v)
     // __atomic_exchange_n() instead on all modern compilers.
     __sync_synchronize();
     return __sync_lock_test_and_set(&a->value, v);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_set, sizeof(uint32_t) == sizeof(a->value));
+    return (Uint32)OSSwapAtomic((volatile uint32_t *)&a->value, (uint32_t)v);
 #elif defined(SDL_PLATFORM_SOLARIS)
     SDL_COMPILE_TIME_ASSERT(atomic_set, sizeof(uint_t) == sizeof(a->value));
     return (Uint32)atomic_swap_uint((volatile uint_t *)&a->value, v);
@@ -240,6 +264,9 @@ void *SDL_SetAtomicPointer(void **a, void *v)
     // __atomic_exchange_n() instead on all modern compilers.
     __sync_synchronize();
     return __sync_lock_test_and_set(a, v);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_set_ptr, sizeof(uint32_t) == sizeof(*a));
+    return (void *)(uintptr_t)OSSwapAtomic((volatile uint32_t *)a, (uint32_t)(uintptr_t)v);
 #elif defined(SDL_PLATFORM_SOLARIS)
     return atomic_swap_ptr(a, v);
 #else
@@ -258,6 +285,9 @@ int SDL_AddAtomicInt(SDL_AtomicInt *a, int v)
     return _InterlockedExchangeAdd((long *)&a->value, v);
 #elif defined(HAVE_GCC_ATOMICS)
     return __sync_fetch_and_add(&a->value, v);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_add, sizeof(int32_t) == sizeof(a->value));
+    return (int)OSAddAtomic((volatile int32_t *)&a->value, (int32_t)v);
 #elif defined(SDL_PLATFORM_SOLARIS)
     int pv = a->value;
     membar_consumer();
@@ -279,6 +309,9 @@ Uint32 SDL_AddAtomicU32(SDL_AtomicU32 *a, int v)
     return (Uint32)_InterlockedExchangeAdd((long *)&a->value, v);
 #elif defined(HAVE_GCC_ATOMICS)
     return __sync_fetch_and_add(&a->value, v);
+#elif defined(SDL_PLATFORM_WIIU)
+    SDL_COMPILE_TIME_ASSERT(atomic_add, sizeof(int32_t) == sizeof(a->value));
+    return (Uint32)OSAddAtomic((volatile int32_t *)&a->value, (int32_t)v);
 #elif defined(SDL_PLATFORM_SOLARIS)
     Uint32 pv = a->value;
     membar_consumer();
