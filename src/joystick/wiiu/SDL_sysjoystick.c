@@ -57,7 +57,7 @@
    Layout
    ------
    Every player has the same layout, see WIIU_BTN_*: 17 buttons named for the
-   Wii U Pro Controller positions, hat 0 for the D-pad and axes 0 to 3 (left X,
+   Wii U Pro Controller positions (A B X Y are joystick buttons 0 to 3), hat 0 for the D-pad and axes 0 to 3 (left X,
    left Y, right X, right Y; Y is positive down). There are no analog trigger
    axes: ZL/ZR and L/R are buttons. The sources that are not already laid out
    this way (a Wii Remote alone or with a Nunchuk) are translated into it when
@@ -67,7 +67,8 @@
    ----
    SDL_WIIU_WIIMOTE_ORIENTATION ("sideways", the default, or "vertical") says
    how a Wii Remote without an extension is held. Sideways, 2 is the primary
-   (A) button and 1 the secondary (B) button, and the D-pad is rotated to match.
+   (A) button and 1 the secondary (B) button, the Wii Remote's A is X and its B
+   is Y, and the D-pad is rotated to match: the button that points left reads left.
 */
 
 #include <vpad/input.h>
@@ -102,7 +103,7 @@
 
 // One GUID for every player, so a mapping made for one applies to all
 #define WIIU_GUID_NAME    "Wii U Controller"
-#define WIIU_GUID_PRODUCT 0x0300 // invented, see WIIU_JoystickGetDeviceGUID()
+#define WIIU_GUID_PRODUCT USB_PRODUCT_NINTENDO_WIIU_CONTROLLER // invented, see WIIU_JoystickGetDeviceGUID()
 
 // A change that happens after the first scan (a controller connecting, or its
 // extension changing) must be seen by this many consecutive Detect() calls
@@ -135,26 +136,29 @@ typedef enum
     WIIU_PAD_COUNT
 } WIIU_PadType;
 
-// Raw button numbers. Same order as the libogc driver for 0..14.
+/* Raw button numbers, grouped by where the buttons are on a Wii U Pro
+   Controller: face buttons (A B X Y in the order SDL's own drivers use), the
+   shoulders and triggers, the centre buttons, the stick clicks, and last the
+   buttons that only exist on a Wii Remote (1, 2) or Nunchuk (Z, C). */
 enum
 {
     WIIU_BTN_A = 0,
     WIIU_BTN_B,
-    WIIU_BTN_ONE,
-    WIIU_BTN_TWO,
-    WIIU_BTN_MINUS,
-    WIIU_BTN_PLUS,
-    WIIU_BTN_HOME,
-    WIIU_BTN_Z, // Nunchuk
-    WIIU_BTN_C, // Nunchuk
     WIIU_BTN_X,
     WIIU_BTN_Y,
     WIIU_BTN_L,
     WIIU_BTN_R,
     WIIU_BTN_ZL,
     WIIU_BTN_ZR,
+    WIIU_BTN_MINUS,
+    WIIU_BTN_PLUS,
+    WIIU_BTN_HOME,
     WIIU_BTN_L3,
     WIIU_BTN_R3,
+    WIIU_BTN_ONE,
+    WIIU_BTN_TWO,
+    WIIU_BTN_Z, // Nunchuk
+    WIIU_BTN_C, // Nunchuk
     WIIU_BTN_COUNT
 };
 
@@ -521,11 +525,12 @@ static void WIIU_DecodeWPAD(WIIU_Source *slot, int chan, const KPADStatus *st)
             if (phys & WIIU_BIT(WIIU_BTN_ONE)) {
                 slot->buttons |= WIIU_BIT(WIIU_BTN_B);
             }
+            // The Wii Remote's own A and B follow in the same order: A is X, B (the trigger) is Y
             if (phys & WIIU_BIT(WIIU_BTN_A)) {
-                slot->buttons |= WIIU_BIT(WIIU_BTN_Y);
+                slot->buttons |= WIIU_BIT(WIIU_BTN_X);
             }
             if (phys & WIIU_BIT(WIIU_BTN_B)) {
-                slot->buttons |= WIIU_BIT(WIIU_BTN_X);
+                slot->buttons |= WIIU_BIT(WIIU_BTN_Y);
             }
             slot->hat = WIIU_RotateHatSideways(slot->hat);
         } else {
@@ -1328,7 +1333,9 @@ static bool WIIU_JoystickGetGamepadMapping(int device_index, SDL_GamepadMapping 
     /* One mapping for every player, whatever its sources are: they are all
        in the layout of WIIU_BTN_* by the time SDL sees them. SDL's a/b/x/y are
        positions (a is the bottom button), and Nintendo's A is on the right:
-       a = B, b = A, x = Y, y = X. */
+       a = B, b = A, x = Y, y = X. This is the same as a Switch Pro Controller,
+       and the gamepad type (see SDL_GetGamepadTypeFromVIDPID) makes
+       SDL_GetGamepadButtonLabel() answer with the Nintendo letters. */
     out->a = WIIU_MapButton(WIIU_BTN_B);
     out->b = WIIU_MapButton(WIIU_BTN_A);
     out->x = WIIU_MapButton(WIIU_BTN_Y);

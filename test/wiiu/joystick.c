@@ -6,7 +6,7 @@
 
     P1 id=1 "Wii U Controller 1" gamepad
       raw: A X  hat=01  axes=0,-120,0,0     <- SDL_Joystick: raw button names, hat, axes
-      pad: east north dpup lefty=-120       <- SDL_Gamepad: the mapped buttons and axes
+      pad: A(east) X(north) dpup lefty=-120 <- SDL_Gamepad: label(position) of the mapped buttons, axes
 
   Press a button on a controller and see which raw button and which SDL gamepad
   button answers.
@@ -19,8 +19,11 @@
 
   Raw buttons (the names come from WIIU_BTN_* in src/joystick/wiiu/
   SDL_sysjoystick.c and must be kept in step with it):
-    A B 1 2 - + HOME Z C X Y L R ZL ZR L3 R3
-  SDL gamepad: south = Wii U B, east = Wii U A, west = Wii U Y, north = Wii U X.
+    A B X Y L R ZL ZR - + HOME L3 R3 1 2 Z C
+  SDL gamepad: positions are fixed by SDL, south = Wii U B, east = Wii U A,
+  west = Wii U Y, north = Wii U X. The test shows the Nintendo label first and the
+  SDL position in brackets (SDL_GetGamepadStringForButton names the position, so
+  a Wii U A reads "b" there, as it does on a Switch Pro Controller).
 
   Also: press A (east) on a controller to rumble it for 300 ms. The first line of
   the status panel shows the GamePad sensors (accelerometer in m/s^2, gyro in
@@ -37,7 +40,7 @@
 
 // Same order as WIIU_BTN_* in the driver
 static const char *const raw_names[] = {
-    "A", "B", "1", "2", "-", "+", "HOME", "Z", "C", "X", "Y", "L", "R", "ZL", "ZR", "L3", "R3"
+    "A", "B", "X", "Y", "L", "R", "ZL", "ZR", "-", "+", "HOME", "L3", "R3", "1", "2", "Z", "C"
 };
 
 static void describe(SDL_JoystickID id)
@@ -97,6 +100,34 @@ static void append(char *line, size_t size, const char *fmt, ...)
     va_end(ap);
 }
 
+// "A(east)": the label on the controller, then the position SDL names it by
+static const char *pad_button_text(SDL_GamepadButton button, SDL_Gamepad *gamepad)
+{
+    static char text[32];
+    const char *position = SDL_GetGamepadStringForButton(button);
+    const char *label = NULL;
+
+    switch (SDL_GetGamepadButtonLabel(gamepad, button)) {
+    case SDL_GAMEPAD_BUTTON_LABEL_A: label = "A"; break;
+    case SDL_GAMEPAD_BUTTON_LABEL_B: label = "B"; break;
+    case SDL_GAMEPAD_BUTTON_LABEL_X: label = "X"; break;
+    case SDL_GAMEPAD_BUTTON_LABEL_Y: label = "Y"; break;
+    default: break;
+    }
+    if (!label) {
+        return position ? position : "?";
+    }
+    switch (button) {
+    case SDL_GAMEPAD_BUTTON_SOUTH: position = "south"; break;
+    case SDL_GAMEPAD_BUTTON_EAST:  position = "east"; break;
+    case SDL_GAMEPAD_BUTTON_WEST:  position = "west"; break;
+    case SDL_GAMEPAD_BUTTON_NORTH: position = "north"; break;
+    default: break;
+    }
+    SDL_snprintf(text, sizeof(text), "%s(%s)", label, position);
+    return text;
+}
+
 static void show_player(int slot, SDL_JoystickID id)
 {
     char line[160];
@@ -138,7 +169,7 @@ static void show_player(int slot, SDL_JoystickID id)
     if (gamepad) {
         for (i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i) {
             if (SDL_GetGamepadButton(gamepad, (SDL_GamepadButton)i)) {
-                append(line, sizeof(line), " %s", SDL_GetGamepadStringForButton((SDL_GamepadButton)i));
+                append(line, sizeof(line), " %s", pad_button_text((SDL_GamepadButton)i, gamepad));
             }
         }
         for (i = 0; i < SDL_GAMEPAD_AXIS_COUNT; ++i) {

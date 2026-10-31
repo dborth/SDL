@@ -3056,6 +3056,12 @@ SDL_GamepadType SDL_GetGamepadTypeFromVIDPID(Uint16 vendor, Uint16 product, cons
                 product == USB_PRODUCT_NINTENDO_SWITCH2_JOYCON_PAIR)) {
         type = SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR;
 
+#ifdef SDL_JOYSTICK_WIIU
+    } else if (vendor == USB_VENDOR_NINTENDO && product == USB_PRODUCT_NINTENDO_WIIU_CONTROLLER) {
+        // Nintendo face buttons: the labels are B A Y X in SDL's south, east, west, north order
+        type = SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO;
+#endif
+
     } else if (forUI && SDL_IsJoystickGameCube(vendor, product)) {
         type = SDL_GAMEPAD_TYPE_GAMECUBE;
 

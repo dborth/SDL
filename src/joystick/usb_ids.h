@@ -133,6 +133,7 @@
 #define USB_PRODUCT_NINTENDO_SWITCH2_PRO                  0x2069
 #define USB_PRODUCT_NINTENDO_WII_REMOTE                   0x0306
 #define USB_PRODUCT_NINTENDO_WII_REMOTE2                  0x0330
+#define USB_PRODUCT_NINTENDO_WIIU_CONTROLLER              0x0300 // invented, used by the Wii U joystick driver only
 #define USB_PRODUCT_NVIDIA_SHIELD_CONTROLLER_V103         0x7210
 #define USB_PRODUCT_NVIDIA_SHIELD_CONTROLLER_V104         0x7214
 #define USB_PRODUCT_PDP_ROCK_CANDY                        0x0246
