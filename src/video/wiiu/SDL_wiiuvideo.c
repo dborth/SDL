@@ -69,13 +69,18 @@ static bool s_callbacks_registered;
 
 /* Process-wide ProcUI state. It outlives SDL_Quit() because the process does.
  *  s_procui_owned   SDL called ProcUIInitEx() and has not called ProcUIShutdown()
- *  s_procui_exited  SDL walked ProcUI to its end (or ProcUI said EXITING): the
+ *  s_procui_exiting ProcUI said EXITING (HOME menu: Close). As in the SDL2 patch, nothing
+ *                   is shut down at that moment: the quit event is sent, the application
+ *                   leaves its loop and calls SDL_Quit(), and ProcUIShutdown() comes
+ *                   last, after GX2 and the foreground heaps are gone
+ *  s_procui_exited  ProcUIShutdown() was called (ProcUI walked to its end): the
  *                   process is leaving, SDL cannot be initialized again.
  *                   Same handling as WHBProcInit/WHBProcShutdown: no HOME menu, HOME
  *                   means "exit", and the end is SYSRelaunchTitle()
  *  s_home_denied    HOME was pressed while the HOME menu was disabled (HBL only)
  *  s_relaunched     SYSRelaunchTitle() was called */
 static bool s_procui_owned;
+static bool s_procui_exiting; // ProcUI said EXITING; ProcUIShutdown() is still due (see WIIU_FinishProcUIExit)
 static bool s_procui_exited;
 static bool s_from_hbl;
 static volatile bool s_home_denied;
@@ -672,7 +677,7 @@ static void WIIU_PumpEvents(SDL_VideoDevice *_this)
         }
     }
 
-    if (s_procui_owned && ProcUIIsRunning() && !videodata->exiting_procui) {
+    if (s_procui_owned && ProcUIIsRunning() && !s_procui_exiting) {
         // TRUE: while in the background this blocks until the foreground is back
         // (and runs WIIU_AcquireCallback() when it is).
         switch (ProcUIProcessMessages(TRUE)) {
@@ -685,12 +690,12 @@ static void WIIU_PumpEvents(SDL_VideoDevice *_this)
             }
             break;
         case PROCUI_STATUS_EXITING:
-            // Same order as wut's WHBProcIsRunning(): ProcUIShutdown() as soon as
-            // EXITING is seen, then the application cleans up and returns.
+            // The HOME menu closed the application. Exactly what the SDL2 patch does:
+            // remember it (ProcUIProcessMessages() is not called again), send the quit
+            // event, and leave ProcUIShutdown() to the end of SDL_Quit(), after the
+            // application has cleaned up and GX2 and the foreground heaps are down.
             videodata->exiting_procui = true;
-            ProcUIShutdown();
-            s_procui_owned = false;
-            s_procui_exited = true;
+            s_procui_exiting = true;
             if (!videodata->quit_sent) {
                 videodata->quit_sent = true;
                 SDL_SendQuit();
@@ -844,6 +849,18 @@ static void CleanupVideo(SDL_VideoData *videodata, bool shutdown_procui)
     s_videodata = NULL;
 }
 
+/* ProcUI said EXITING and the application has cleaned up: end ProcUI. Used at the end of
+ * SDL_Quit() (the SDL2 patch's place for it) and by the atexit handler when the
+ * application never got to SDL_Quit(). Nothing may call ProcUIProcessMessages() any more. */
+static void WIIU_FinishProcUIExit(void)
+{
+    if (s_procui_owned && ProcUIIsRunning()) {
+        ProcUIShutdown();
+    }
+    s_procui_owned = false;
+    s_procui_exited = true;
+}
+
 /* Walk ProcUI to its end: ask the HOME menu to take over, answer ProcUI until it
  * says EXITING, then ProcUIShutdown(). Without this the process can return to
  * a loading screen that never ends. Used by SDL_Quit() and, if the application
@@ -851,6 +868,14 @@ static void CleanupVideo(SDL_VideoData *videodata, bool shutdown_procui)
 static void WIIU_WalkProcUIToExit(void)
 {
     if (!s_procui_owned || !ProcUIIsRunning()) {
+        return;
+    }
+    if (s_procui_exiting || s_from_hbl) {
+        // EXITING was already answered by the HOME menu (Close), or this is the Homebrew
+        // Launcher, where HOME already meant "leave" and there is no HOME menu to ask: wut's
+        // WHBProcIsRunning() just calls ProcUIShutdown() in both cases. Asking again with
+        // SYSLaunchMenu() and waiting for an EXITING that will not come is the hang.
+        WIIU_FinishProcUIExit();
         return;
     }
     if (!WIIU_IsCemu()) {
@@ -912,6 +937,12 @@ static void WIIU_VideoQuit(SDL_VideoDevice *_this)
     videodata->quitting = true;
     WIIU_QuitInput(_this); // before GX2 is shut down
     CleanupVideo(videodata, false);
+
+    // The SDL2 patch's order: ProcUIShutdown() is the last thing, and only when the HOME
+    // menu already said EXITING (otherwise ProcUI stays up so SDL can be initialized again).
+    if (s_procui_exiting) {
+        WIIU_FinishProcUIExit();
+    }
 }
 
 static bool WIIU_VideoInit(SDL_VideoDevice *_this)
@@ -925,7 +956,7 @@ static bool WIIU_VideoInit(SDL_VideoDevice *_this)
         GX2_INIT_END
     };
 
-    if (s_procui_exited) {
+    if (s_procui_exited || s_procui_exiting) {
         // ProcUI was walked to its end: the process is on its way out.
         return SDL_SetError("The Wii U application is exiting; SDL cannot be initialized again");
     }
