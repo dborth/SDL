@@ -66,9 +66,10 @@
    Hint
    ----
    SDL_WIIU_WIIMOTE_ORIENTATION ("sideways", the default, or "vertical") says
-   how a Wii Remote without an extension is held. Sideways, 2 is the primary
-   (A) button and 1 the secondary (B) button, the Wii Remote's A is X and its B
-   is Y, and the D-pad is rotated to match: the button that points left reads left.
+   how a Wii Remote without an extension is held. Sideways, 2 is the bottom (B)
+   face button and 1 is the right-hand (A) one, the Wii Remote's A is X and its
+   B is Y, and the D-pad is rotated to match: the button that points left reads
+   left.
 */
 
 #include <vpad/input.h>
@@ -518,12 +519,13 @@ static void WIIU_DecodeWPAD(WIIU_Source *slot, int chan, const KPADStatus *st)
         slot->hat = WIIU_HatFromBits(st->hold, WPAD_BUTTON_UP, WPAD_BUTTON_RIGHT, WPAD_BUTTON_DOWN, WPAD_BUTTON_LEFT);
         slot->buttons = phys & (WIIU_BIT(WIIU_BTN_MINUS) | WIIU_BIT(WIIU_BTN_PLUS) | WIIU_BIT(WIIU_BTN_HOME));
         if (WIIU_wiimote_sideways) {
-            // 2 is under the right thumb: primary (A, the east button), 1 is secondary (B, south)
+            // 2 is under the right thumb and is the one games jump with, so it is B (south, the bottom face
+            // button); 1 is A (east). That is the opposite of the letters, on purpose.
             if (phys & WIIU_BIT(WIIU_BTN_TWO)) {
-                slot->buttons |= WIIU_BIT(WIIU_BTN_A);
+                slot->buttons |= WIIU_BIT(WIIU_BTN_B);
             }
             if (phys & WIIU_BIT(WIIU_BTN_ONE)) {
-                slot->buttons |= WIIU_BIT(WIIU_BTN_B);
+                slot->buttons |= WIIU_BIT(WIIU_BTN_A);
             }
             // The Wii Remote's own A and B follow in the same order: A is X, B (the trigger) is Y
             if (phys & WIIU_BIT(WIIU_BTN_A)) {
