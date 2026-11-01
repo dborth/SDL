@@ -84,10 +84,7 @@ struct SDL_VideoData
 {
     bool handle_procui;      // SDL called ProcUIInit and so owns the ProcUI state machine
     bool has_foreground;
-    bool entering_background; // RELEASE_FOREGROUND was seen; ProcUIDrawDoneRelease() is due on the next pump
-    bool exiting_procui;     // ProcUI said EXITING (or we walked it there)
     bool procui_fresh;       // this init called ProcUIInitEx() (not adopted from an earlier init)
-    bool bg_will_sent;       // SDL_OnApplicationWillEnterBackground() already sent for this release
     bool quit_sent;          // SDL_EVENT_QUIT was sent because of HOME (Homebrew Launcher)
     bool quitting;           // WIIU_VideoQuit() is running: no lifecycle events any more
     bool gx2_initialized;

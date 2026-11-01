@@ -457,7 +457,7 @@ static Uint8 *WIIUAUDIO_AllocDspBuffer(size_t size)
 
 // ---------------------------------------------------------------------------
 // HOME menu (ProcUI). The video driver calls this listener when the application
-// loses the foreground (acquired == false, from inside ProcUIDrawDoneRelease())
+// loses the foreground (acquired == false, just before ProcUIDrawDoneRelease())
 // and when it gets it back. Policy: the voices are paused and resume from the
 // same position, the audio thread and the device stay open, nothing is
 // flushed. The wait confirms the voices are stopped before the foreground goes;

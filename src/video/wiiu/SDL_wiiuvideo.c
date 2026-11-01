@@ -69,10 +69,8 @@ static bool s_callbacks_registered;
 
 /* Process-wide ProcUI state. It outlives SDL_Quit() because the process does.
  *  s_procui_owned   SDL called ProcUIInitEx() and has not called ProcUIShutdown()
- *  s_procui_exiting ProcUI said EXITING (HOME menu: Close). As in the SDL2 patch, nothing
- *                   is shut down at that moment: the quit event is sent, the application
- *                   leaves its loop and calls SDL_Quit(), and ProcUIShutdown() comes
- *                   last, after GX2 and the foreground heaps are gone
+ *  s_procui_exiting ProcUI said EXITING (HOME menu: Close). ProcUIShutdown() is called at
+ *                   once, as WHBProcIsRunning() does, and the quit event is sent
  *  s_procui_exited  ProcUIShutdown() was called (ProcUI walked to its end): the
  *                   process is leaving, SDL cannot be initialized again.
  *                   Same handling as WHBProcInit/WHBProcShutdown: no HOME menu, HOME
@@ -80,7 +78,7 @@ static bool s_callbacks_registered;
  *  s_home_denied    HOME was pressed while the HOME menu was disabled (HBL only)
  *  s_relaunched     SYSRelaunchTitle() was called */
 static bool s_procui_owned;
-static bool s_procui_exiting; // ProcUI said EXITING; ProcUIShutdown() is still due (see WIIU_FinishProcUIExit)
+static bool s_procui_exiting; // ProcUI said EXITING; ProcUIShutdown() has been called
 static bool s_procui_exited;
 static bool s_from_hbl;
 static volatile bool s_home_denied;
@@ -134,9 +132,6 @@ static void ReleaseForeground(SDL_VideoData *videodata)
     if (!videodata->has_foreground) {
         return;
     }
-
-    // Listeners go first: they still have a valid foreground to clean up with
-    NotifyForegroundListeners(false);
 
     // Make sure the GPU is no longer using what we are about to free
     GX2DrawDone();
@@ -219,7 +214,6 @@ static bool AcquireForeground(SDL_VideoData *videodata)
 
     GX2SetSwapInterval(videodata->swap_interval);
     videodata->has_foreground = true;
-    NotifyForegroundListeners(true);
     return true;
 
 fail:
@@ -228,28 +222,12 @@ fail:
     return false;
 }
 
-/* The callbacks send the lifecycle events when the foreground really changes
- * hands. When SDL runs ProcUI, WIIU_PumpEvents() has already sent
- * SDL_EVENT_WILL_ENTER_BACKGROUND (the application gets one more frame to
- * react); when the application runs ProcUI itself, the release callback sends
- * it. The SDL_OnApplication*() helpers also do the window side: windows are
- * minimized and the keyboard focus is dropped (so no key stays held) on the way
- * out, and restored on the way in. Windows are not hidden: they still exist and
- * keep their size; this is what the Android and iOS drivers do. */
 static uint32_t WIIU_AcquireCallback(void *context)
 {
     (void)context;
     if (s_videodata && !s_videodata->has_foreground) {
-        const bool events = !s_videodata->quitting;
-        if (events) {
-            SDL_OnApplicationWillEnterForeground();
-        }
-        // Tells the foreground listeners (audio, joystick) after the GX2 side is back.
         if (!AcquireForeground(s_videodata)) {
             SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Could not get the Wii U foreground back: %s", SDL_GetError());
-        }
-        if (events) {
-            SDL_OnApplicationDidEnterForeground();
         }
     }
     return 0;
@@ -259,21 +237,7 @@ static uint32_t WIIU_ReleaseCallback(void *context)
 {
     (void)context;
     if (s_videodata && s_videodata->has_foreground) {
-        SDL_VideoData *videodata = s_videodata;
-        const bool events = !videodata->quitting;
-        if (events && !videodata->bg_will_sent) {
-            SDL_OnApplicationWillEnterBackground();
-        }
-        videodata->bg_will_sent = false;
-        if (WIIU_SWKBD_IsActive()) {
-            // The keyboard has GX2 resources of its own, made with the heap state of its time.
-            // Take it down; the application can show it again with SDL_StartTextInput().
-            WIIU_SWKBD_Shutdown();
-        }
-        ReleaseForeground(videodata); // listeners first: audio pauses, controllers go neutral
-        if (events) {
-            SDL_OnApplicationDidEnterBackground();
-        }
+        ReleaseForeground(s_videodata);
     }
     return 0;
 }
@@ -646,6 +610,58 @@ static void WIIU_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
 /* ---------------------------------------------------------------------- */
 // Events
 
+static void WIIU_FinishProcUIExit(void);
+
+/*  - RELEASE_FOREGROUND: answer at once with ProcUIDrawDoneRelease() (always, whatever our own
+ *    state is: the OS waits for it), then call ProcUIProcessMessages() again. That second call
+ *    runs WIIU_ReleaseCallback() and blocks until the foreground is back, or the HOME menu
+ *    closed the application.
+ *  - EXITING: ProcUIShutdown() right away, send the quit event and let the application leave
+ *    as fast as it can. Nothing here waits for the application. */
+static void WIIU_HandleProcUI(SDL_VideoData *videodata)
+{
+    bool released = false;
+
+    while (s_procui_owned && ProcUIIsRunning() && !s_procui_exiting) {
+        const ProcUIStatus status = ProcUIProcessMessages(TRUE);
+
+        if (status == PROCUI_STATUS_RELEASE_FOREGROUND) {
+            if (!released && videodata->has_foreground) {
+                // Still in the foreground here, on the application's thread: safe place for all of it
+                if (WIIU_SWKBD_IsActive()) {
+                    WIIU_SWKBD_Shutdown(); // the application can show it again with SDL_StartTextInput()
+                }
+                NotifyForegroundListeners(false); // audio pauses, controllers go neutral
+                SDL_OnApplicationWillEnterBackground();
+                SDL_OnApplicationDidEnterBackground();
+            }
+            released = true;
+            ProcUIDrawDoneRelease();
+            continue; // the next ProcUIProcessMessages() runs the release callback, then blocks
+        }
+
+        if (status == PROCUI_STATUS_EXITING) {
+            s_procui_exiting = true;
+            WIIU_FinishProcUIExit(); // ProcUIShutdown() now
+            if (!videodata->quit_sent) {
+                videodata->quit_sent = true;
+                SDL_SendQuit();
+            }
+            return;
+        }
+        break;
+    }
+
+    if (released) {
+        // Back (the acquire callback has run) unless the acquire failed
+        if (videodata->has_foreground) {
+            NotifyForegroundListeners(true);
+            SDL_OnApplicationWillEnterForeground();
+            SDL_OnApplicationDidEnterForeground();
+        }
+    }
+}
+
 static void WIIU_PumpEvents(SDL_VideoDevice *_this)
 {
     SDL_VideoData *videodata = _this->internal;
@@ -660,14 +676,6 @@ static void WIIU_PumpEvents(SDL_VideoDevice *_this)
         return;
     }
 
-    if (videodata->entering_background) {
-        // The previous call saw RELEASE_FOREGROUND and sent WILL_ENTER_BACKGROUND.
-        // The application has had a frame to process it; now give the foreground
-        // up. This runs WIIU_ReleaseCallback(), which sends DID_ENTER_BACKGROUND.
-        videodata->entering_background = false;
-        ProcUIDrawDoneRelease();
-    }
-
     if (s_home_denied) {
         // Homebrew Launcher: no HOME menu. Treat it as a request to quit.
         s_home_denied = false;
@@ -677,36 +685,7 @@ static void WIIU_PumpEvents(SDL_VideoDevice *_this)
         }
     }
 
-    if (s_procui_owned && ProcUIIsRunning() && !s_procui_exiting) {
-        // TRUE: while in the background this blocks until the foreground is back
-        // (and runs WIIU_AcquireCallback() when it is).
-        switch (ProcUIProcessMessages(TRUE)) {
-        case PROCUI_STATUS_RELEASE_FOREGROUND:
-            // HOME pressed (or another system request)
-            if (videodata->has_foreground) {
-                SDL_OnApplicationWillEnterBackground();
-                videodata->bg_will_sent = true;
-                videodata->entering_background = true;
-            }
-            break;
-        case PROCUI_STATUS_EXITING:
-            // The HOME menu closed the application. Exactly what the SDL2 patch does:
-            // remember it (ProcUIProcessMessages() is not called again), send the quit
-            // event, and leave ProcUIShutdown() to the end of SDL_Quit(), after the
-            // application has cleaned up and GX2 and the foreground heaps are down.
-            videodata->exiting_procui = true;
-            s_procui_exiting = true;
-            if (!videodata->quit_sent) {
-                videodata->quit_sent = true;
-                SDL_SendQuit();
-            }
-            break;
-        case PROCUI_STATUS_IN_FOREGROUND:
-        case PROCUI_STATUS_IN_BACKGROUND:
-        default:
-            break;
-        }
-    }
+    WIIU_HandleProcUI(videodata);
 }
 
 /* ---------------------------------------------------------------------- */
