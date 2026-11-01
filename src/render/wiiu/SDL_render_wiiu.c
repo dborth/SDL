@@ -191,11 +191,11 @@ static WIIU_PixFmt GetPixFmt(SDL_PixelFormat format)
 
     case SDL_PIXELFORMAT_RGB565:
         out.fmt = GX2_SURFACE_FORMAT_UNORM_R5_G6_B5;
-        out.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
+        out.compMap = GX2_COMP_MAP(GX2_SQ_SEL_B, GX2_SQ_SEL_G, GX2_SQ_SEL_R, GX2_SQ_SEL_1);
         break;
     case SDL_PIXELFORMAT_BGR565:
         out.fmt = GX2_SURFACE_FORMAT_UNORM_R5_G6_B5;
-        out.compMap = GX2_COMP_MAP(GX2_SQ_SEL_B, GX2_SQ_SEL_G, GX2_SQ_SEL_R, GX2_SQ_SEL_A);
+        out.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_1);
         break;
 
     case SDL_PIXELFORMAT_ARGB2101010:
@@ -377,6 +377,8 @@ static void *LockTextureMemory(WIIU_RenderData *data, WIIU_TextureData *tdata)
     return GX2RLockSurfaceEx(&tdata->texture.surface, 0, GX2R_RESOURCE_BIND_NONE);
 }
 
+// NOTE: a locked texture is the GPU's memory as is: for 16-bit formats the caller would have to write
+// byte swapped texels. SDL_UpdateTexture() does the swap itself (CopyRowsSwap16).
 static bool WIIU_LockTexture(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_Rect *rect, void **pixels, int *pitch)
 {
     WIIU_RenderData *data = (WIIU_RenderData *)renderer->internal;
@@ -401,6 +403,21 @@ static void WIIU_UnlockTexture(SDL_Renderer *renderer, SDL_Texture *texture)
     GX2RUnlockSurfaceEx(&tdata->texture.surface, 0, GX2R_RESOURCE_BIND_NONE);
 }
 
+/* The GPU reads 16-bit texels as little endian values, the big endian CPU wrote
+ * them the other way round: swap the two bytes of every texel on the way in. */
+static void CopyRowsSwap16(Uint8 *dst, int dst_pitch, const Uint8 *src, int src_pitch, int w, int h)
+{
+    for (int y = 0; y < h; y++) {
+        const Uint16 *s = (const Uint16 *)src;
+        Uint16 *d = (Uint16 *)dst;
+        for (int x = 0; x < w; x++) {
+            d[x] = SDL_Swap16(s[x]);
+        }
+        src += src_pitch;
+        dst += dst_pitch;
+    }
+}
+
 static bool WIIU_UpdateTexture(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_Rect *rect, const void *pixels, int pitch)
 {
     WIIU_TextureData *tdata = (WIIU_TextureData *)texture->internal;
@@ -413,7 +430,9 @@ static bool WIIU_UpdateTexture(SDL_Renderer *renderer, SDL_Texture *texture, con
     if (!WIIU_LockTexture(renderer, texture, rect, (void **)&dst, &dst_pitch)) {
         return false;
     }
-    if ((int)length == pitch && (int)length == dst_pitch) {
+    if (bpp == 2) {
+        CopyRowsSwap16(dst, dst_pitch, src, pitch, rect->w, rect->h);
+    } else if ((int)length == pitch && (int)length == dst_pitch) {
         SDL_memcpy(dst, src, length * rect->h);
     } else {
         for (int row = 0; row < rect->h; row++) {
