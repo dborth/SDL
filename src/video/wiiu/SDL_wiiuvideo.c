@@ -847,10 +847,7 @@ static void WIIU_AtExit(void)
 }
 
 /* SDL_Quit() and SDL_QuitSubSystem(SDL_INIT_VIDEO) free what this driver made
- * (GX2, scan buffers, windows) and nothing more. ProcUI stays running unless the HOME menu
- * already closed it, and the process is not ended here: that is WIIU_AtExit()'s job, when the
- * process really ends. A program that goes on running after SDL_Quit() without calling
- * SDL_Init() again does not answer the HOME button. */
+ * (GX2, scan buffers, windows) */
 static void WIIU_VideoQuit(SDL_VideoDevice *_this)
 {
     SDL_VideoData *videodata = _this->internal;
