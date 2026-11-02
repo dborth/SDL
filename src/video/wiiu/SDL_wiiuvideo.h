@@ -82,9 +82,7 @@ typedef struct WIIU_Output
 
 struct SDL_VideoData
 {
-    bool handle_procui;      // SDL called ProcUIInit and so owns the ProcUI state machine
     bool has_foreground;
-    bool procui_fresh;       // this init called ProcUIInitEx() (not adopted from an earlier init)
     bool quit_sent;          // SDL_EVENT_QUIT was sent because of HOME (Homebrew Launcher)
     bool quitting;           // WIIU_VideoQuit() is running: no lifecycle events any more
     bool gx2_initialized;
