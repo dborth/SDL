@@ -1064,6 +1064,16 @@ static void BlitToOutput(WIIU_RenderData *data, int dst_index)
     data->state.valid = false; // everything above bypassed the cached state
 }
 
+// Same shape within 1%? (1280x720 and 1920x1080 against the GamePad's 854x480: yes)
+static bool SameAspect(const WIIU_Output *a, const WIIU_Output *b)
+{
+    int64_t d = (int64_t)a->width * b->height - (int64_t)a->height * b->width;
+    if (d < 0) {
+        d = -d;
+    }
+    return d * 100 <= (int64_t)a->height * b->width;
+}
+
 static bool WIIU_RenderPresent(SDL_Renderer *renderer)
 {
     WIIU_RenderData *data = (WIIU_RenderData *)renderer->internal;
@@ -1076,10 +1086,19 @@ static bool WIIU_RenderPresent(SDL_Renderer *renderer)
     }
 
     // The window was drawn into the color buffer of its own display. Other
-    // screens it is routed to get a scaled copy.
+    // screens it is routed to show it scaled: when the screens have the same shape
+    // WIIU_PresentOutputs() copies the color buffer straight to their scan buffer
+    // and Cafe OS does the scaling (no extra draw); otherwise it is drawn into their
+    // color buffer with black bars, keeping the aspect ratio.
     for (int i = 0; i < WIIU_NUM_OUTPUTS; i++) {
         if (i != data->home && (targets & (1u << i))) {
-            BlitToOutput(data, i);
+            WIIU_Output *src = &videodata->outputs[data->home];
+            WIIU_Output *dst = &videodata->outputs[i];
+            if (SameAspect(src, dst)) {
+                dst->mirror_src = src;
+            } else {
+                BlitToOutput(data, i);
+            }
         }
     }
     if (!(targets & (1u << data->home))) {

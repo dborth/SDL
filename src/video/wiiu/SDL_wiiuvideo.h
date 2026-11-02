@@ -61,7 +61,8 @@
 #define WIIU_TARGET_BOTH (WIIU_TARGET_TV | WIIU_TARGET_DRC)
 
 // One screen. Native size, scan buffer and the GX2 render target in front of it.
-typedef struct WIIU_Output
+typedef struct WIIU_Output WIIU_Output;
+struct WIIU_Output
 {
     uint32_t width;
     uint32_t height;
@@ -74,11 +75,17 @@ typedef struct WIIU_Output
     GX2ColorBuffer color_buffer;  // MEM1, same size as the screen; image is NULL in background
     GX2ContextState *context;     // MEM2, GX2_CONTEXT_STATE_ALIGNMENT, color_buffer bound as target 0
 
+    // Mirroring: when set, the next WIIU_PresentOutputs() shows this other output's color buffer on
+    // this screen instead of its own, and Cafe OS scales it to the scan buffer (GX2SetTVScale() /
+    // GX2SetDRCScale() describe the size of what is copied). Cleared by every present.
+    const WIIU_Output *mirror_src;
+    uint32_t scale_w, scale_h;    // what GX2SetTVScale() / GX2SetDRCScale() were last given
+
     // TV only
     GX2TVRenderMode tv_render_mode;
     // GamePad only
     GX2DrcRenderMode drc_render_mode;
-} WIIU_Output;
+};
 
 struct SDL_VideoData
 {

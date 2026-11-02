@@ -212,6 +212,8 @@ static bool AcquireForeground(SDL_VideoData *videodata)
         } else {
             GX2SetDRCScale(output->width, output->height);
         }
+        output->scale_w = output->width;
+        output->scale_h = output->height;
         GX2ClearColor(&output->color_buffer, 0.0f, 0.0f, 0.0f, 1.0f);
     }
 
@@ -393,9 +395,24 @@ void WIIU_PresentOutputs(SDL_VideoData *videodata)
     WaitForPreviousSwap(videodata);
     for (int i = 0; i < WIIU_NUM_OUTPUTS; i++) {
         WIIU_Output *output = &videodata->outputs[i];
+        // A mirrored screen shows another screen's color buffer; Cafe OS scales it while copying
+        const WIIU_Output *src = output->mirror_src ? output->mirror_src : output;
+
         GX2SetContextState(output->context);
-        WIIU_SWKBD_Draw(i); // the software keyboard, if it is up, over the window's pixels
-        GX2CopyColorBufferToScanBuffer(&output->color_buffer, output->scan_target);
+        if (!output->mirror_src) {
+            WIIU_SWKBD_Draw(i); // the software keyboard, if it is up, over the window's pixels
+        }
+        if (output->scale_w != src->width || output->scale_h != src->height) {
+            if (i == WIIU_OUTPUT_TV) {
+                GX2SetTVScale(src->width, src->height);
+            } else {
+                GX2SetDRCScale(src->width, src->height);
+            }
+            output->scale_w = src->width;
+            output->scale_h = src->height;
+        }
+        GX2CopyColorBufferToScanBuffer(&src->color_buffer, output->scan_target);
+        output->mirror_src = NULL; // the renderer asks again at its next present
     }
     GX2SwapScanBuffers();
     GX2Flush();
