@@ -75,6 +75,8 @@ typedef struct WIIU_TextureData
     GX2ColorBuffer cbuf;   // render targets only; shares the texture's memory
     bool is_target;
     bool gpu_wrote;        // drawn into since it was last sampled: caches need flushing before it is sampled
+    bool cpu_dirty;        // the CPU wrote it while we had no foreground: flush/invalidate before it is sampled
+    bool locked_gx2r;      // the current lock went through GX2RLockSurfaceEx(), so the unlock must too
     OSTime timestamp;      // the GPU is done with the texture once this has retired
     Uint32 last_run;       // RunCommandQueue() that last queued it, to list it only once per run
 } WIIU_TextureData;
@@ -372,8 +374,14 @@ static bool WIIU_CreateTexture(SDL_Renderer *renderer, SDL_Texture *texture, SDL
 
 static void *LockTextureMemory(WIIU_RenderData *data, WIIU_TextureData *tdata)
 {
+    if (!data->videodata->has_foreground) {
+        tdata->locked_gx2r = false;
+        tdata->cpu_dirty = true;
+        return tdata->texture.surface.image;
+    }
     // The GPU may still be reading it from an earlier frame
     WaitForGPU(data, tdata->timestamp);
+    tdata->locked_gx2r = true;
     return GX2RLockSurfaceEx(&tdata->texture.surface, 0, GX2R_RESOURCE_BIND_NONE);
 }
 
@@ -400,7 +408,11 @@ static void WIIU_UnlockTexture(SDL_Renderer *renderer, SDL_Texture *texture)
     WIIU_TextureData *tdata = (WIIU_TextureData *)texture->internal;
 
     // Flushes the CPU cache and invalidates the GPU's texture cache
-    GX2RUnlockSurfaceEx(&tdata->texture.surface, 0, GX2R_RESOURCE_BIND_NONE);
+    if (tdata->locked_gx2r) {
+        tdata->locked_gx2r = false;
+        GX2RUnlockSurfaceEx(&tdata->texture.surface, 0, GX2R_RESOURCE_BIND_NONE);
+    }
+    // else: locked in the background; cpu_dirty makes the next draw that samples it do the flush
 }
 
 /* The GPU reads 16-bit texels as little endian values, the big endian CPU wrote
@@ -746,6 +758,12 @@ static void SetDrawState(WIIU_RenderData *data, const SDL_RenderCommand *cmd)
         WIIU_TextureData *tdata = (WIIU_TextureData *)texture->internal;
         const GX2Sampler *sampler = PickSampler(data, cmd);
 
+        if (tdata->cpu_dirty) {
+            // Written by the CPU without the foreground (see LockTextureMemory): flush and invalidate now
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE,
+                          tdata->texture.surface.image, tdata->texture.surface.imageSize);
+            tdata->cpu_dirty = false;
+        }
         if (tdata->gpu_wrote) {
             // It was drawn into: flush the color cache and drop the texture cache before sampling it
             GX2Invalidate(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_TEXTURE,
