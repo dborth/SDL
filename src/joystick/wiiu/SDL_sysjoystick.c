@@ -387,9 +387,9 @@ static void WIIU_DecodeGamePad(WIIU_Source *slot, const VPADStatus *st)
     slot->axes[3] = WIIU_StickToAxis(st->rightStick.y, true);
 
     /* Sensors. VPAD gives acceleration in g and angular velocity in turns per second. */
-    slot->accel[0] = st->accelorometer.acc.x * SDL_STANDARD_GRAVITY;
-    slot->accel[1] = st->accelorometer.acc.y * SDL_STANDARD_GRAVITY;
-    slot->accel[2] = st->accelorometer.acc.z * SDL_STANDARD_GRAVITY;
+    slot->accel[0] = st->accelerometer.acc.x * SDL_STANDARD_GRAVITY;
+    slot->accel[1] = st->accelerometer.acc.y * SDL_STANDARD_GRAVITY;
+    slot->accel[2] = st->accelerometer.acc.z * SDL_STANDARD_GRAVITY;
     slot->gyro[0] = st->gyro.x * (2.0f * SDL_PI_F);
     slot->gyro[1] = st->gyro.y * (2.0f * SDL_PI_F);
     slot->gyro[2] = st->gyro.z * (2.0f * SDL_PI_F);
