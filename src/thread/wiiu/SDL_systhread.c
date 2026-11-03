@@ -68,7 +68,7 @@ static void WIIU_ThreadDeallocator(OSThread *thread, void *stack)
     MEMFreeToDefaultHeap(thread);
 }
 
-static int WIIU_ThreadEntry(int argc, const char **argv)
+static int WIIU_ThreadEntry(int argc, void *argv)
 {
     // The SDL_Thread pointer travels in argc, as in wut's pthread layer.
     (void)argv;

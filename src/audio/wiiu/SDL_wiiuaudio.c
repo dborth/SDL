@@ -204,10 +204,10 @@ typedef struct WiiUAXCall
     void *arg;
 } WiiUAXCall;
 
-static int WIIUAUDIO_AXThreadMain(int argc, const char **argv)
+static int WIIUAUDIO_AXThreadMain(int argc, void *argv)
 {
     // argv carries the WiiUAXCall (see RunOnAXCore); argc is unused.
-    WiiUAXCall *call = (WiiUAXCall *)(void *)argv;
+    WiiUAXCall *call = (WiiUAXCall *)argv;
     (void)argc;
     return call->fn(call->arg);
 }
@@ -239,7 +239,7 @@ static bool WIIUAUDIO_RunOnAXCore(int (*fn)(void *arg), void *arg, int *result)
         // OSCreateThread takes the address of the top of the stack. The thread
         // gets no cleanup callback (wut's newlib layer owns that) and no
         // deallocator: it is joined and freed here.
-        if (!OSCreateThread(thread, WIIUAUDIO_AXThreadMain, 0, (char *)&call,
+        if (!OSCreateThread(thread, WIIUAUDIO_AXThreadMain, 0, &call,
                             (Uint8 *)thread + total_size, WIIUAUDIO_AX_THREAD_STACK_SIZE,
                             OSGetThreadPriority(self), WIIUAUDIO_AX_AFFINITY)) {
             MEMFreeToDefaultHeap(thread);
