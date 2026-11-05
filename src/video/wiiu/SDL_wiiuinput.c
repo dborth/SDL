@@ -65,7 +65,6 @@
 typedef struct WIIU_InputData
 {
     bool touch_registered;
-    bool vpad_initialized;
 
     // The latest GamePad sample, with the touch point calibrated
     bool have_sample;
@@ -106,18 +105,6 @@ static bool ReadRawSample(VPADStatus *out, bool *is_new)
         VPADReadError err = VPAD_READ_SUCCESS;
         VPADStatus status;
         int32_t count;
-
-        if (!WIIU_input.vpad_initialized) {
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-            VPADInit();
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-            WIIU_input.vpad_initialized = true;
-        }
 
         SDL_zero(status);
         count = VPADRead(VPAD_CHAN_0, &status, 1, &err);
